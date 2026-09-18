@@ -1,0 +1,116 @@
+---
+- name: Delete Data Grid cluster via GitOps
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    gitea_url: "http://gitea.openshift-gitops.svc:3000"
+    gitea_user: "gitea"
+    gitea_password: "gitea2026"
+    gitea_repo: "datagrid-poc"
+    manifest_dir: "manifests"
+
+  tasks:
+    - name: Validate required variables
+      ansible.builtin.assert:
+        that:
+          - cluster_name is defined and cluster_name | length > 0
+        fail_msg: "Missing required variable: cluster_name"
+
+    - name: Check for existing caches on this cluster
+      kubernetes.core.k8s_info:
+        api_version: infinispan.org/v2alpha1
+        kind: Cache
+        namespace: rhdg-poc
+      register: all_caches
+
+    - name: Fail if cluster still has caches
+      ansible.builtin.fail:
+        msg: >-
+          Cannot delete cluster '{{ cluster_name }}' — it still has
+          {{ cluster_caches | length }} cache(s): {{ cluster_caches | join(', ') }}.
+          Delete all caches first.
+      vars:
+        cluster_caches: "{{ all_caches.resources | selectattr('spec.clusterName', 'equalto', cluster_name) | map(attribute='metadata.name') | list }}"
+      when: cluster_caches | length > 0
+
+    - name: Clone Gitea repository
+      ansible.builtin.git:
+        repo: "http://{{ gitea_user }}:{{ gitea_password }}@gitea.openshift-gitops.svc:3000/{{ gitea_user }}/{{ gitea_repo }}.git"
+        dest: "/tmp/gitea-{{ gitea_repo }}"
+        version: main
+        force: true
+
+    - name: Find cluster manifest files
+      ansible.builtin.find:
+        paths: "/tmp/gitea-{{ gitea_repo }}/{{ manifest_dir }}"
+        patterns:
+          - "*-cluster-{{ cluster_name }}.yaml"
+          - "*-{{ cluster_name }}-credentials.yaml"
+      register: found_files
+
+    - name: Remove manifest files from repository
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ found_files.files }}"
+
+    - name: Configure git user
+      ansible.builtin.shell: |
+        cd /tmp/gitea-{{ gitea_repo }}
+        git config user.email "aap@redhat.com"
+        git config user.name "Ansible Automation Platform"
+      changed_when: false
+
+    - name: Commit and push removal to Gitea
+      ansible.builtin.shell: |
+        cd /tmp/gitea-{{ gitea_repo }}
+        git add -A
+        git commit -m "Remove cluster {{ cluster_name }} and its credentials"
+        git push origin main
+      register: git_push
+
+    - name: Force ArgoCD to refresh
+      kubernetes.core.k8s:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        name: datagrid-poc
+        namespace: openshift-gitops
+        definition:
+          metadata:
+            annotations:
+              argocd.argoproj.io/refresh: "hard"
+        merge_type: merge
+
+    - name: Wait for ArgoCD to sync the removal
+      ansible.builtin.pause:
+        seconds: 15
+
+    - name: Delete the Infinispan CR from OpenShift
+      kubernetes.core.k8s:
+        api_version: infinispan.org/v1
+        kind: Infinispan
+        name: "{{ cluster_name }}"
+        namespace: rhdg-poc
+        state: absent
+
+    - name: Delete the credentials Secret from OpenShift
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Secret
+        name: "{{ cluster_name }}-credentials"
+        namespace: rhdg-poc
+        state: absent
+
+    - name: Display result
+      ansible.builtin.debug:
+        msg: >-
+          Cluster '{{ cluster_name }}' manifests removed from Gitea, then
+          CR and credentials deleted from OpenShift. ArgoCD will not recreate
+          them (manifests no longer in Git).
+
+    - name: Clean up temporary files
+      ansible.builtin.file:
+        path: "/tmp/gitea-{{ gitea_repo }}"
+        state: absent

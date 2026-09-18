@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spring-cache-app
+  namespace: rhdg-poc
+  labels:
+    app: spring-cache-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spring-cache-app
+  template:
+    metadata:
+      labels:
+        app: spring-cache-app
+    spec:
+      containers:
+        - name: spring-cache-app
+          image: spring-cache-app:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: DG_HOST
+              value: "healthcare"
+            - name: DG_PORT
+              value: "11222"
+            - name: DG_USERNAME
+              value: "app-healthcare"
+            - name: DG_PASSWORD
+              value: "h34lthc4r3!"
+            - name: DG_SSL
+              value: "true"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10

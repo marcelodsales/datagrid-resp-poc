@@ -1,0 +1,8 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: healthcare-ca-issuer
+  namespace: rhdg-poc
+spec:
+  ca:
+    secretName: healthcare-ca-tls

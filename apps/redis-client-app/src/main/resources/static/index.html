@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RESP Cache Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes flash-green { from { background-color: rgba(34,197,94,0.2); } to { background-color: transparent; } }
+        @keyframes flash-red { from { background-color: rgba(239,68,68,0.2); } to { background-color: transparent; } }
+        @keyframes flash-amber { from { background-color: rgba(245,158,11,0.2); } to { background-color: transparent; } }
+        .flash-added { animation: flash-green 1.5s ease-out; }
+        .flash-deleted { animation: flash-red 1s ease-out; }
+        .flash-updated { animation: flash-amber 1.5s ease-out; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200 min-h-screen antialiased text-base">
+    <div class="max-w-6xl mx-auto px-8 py-10">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between border-b border-slate-700 pb-6 mb-8">
+            <div>
+                <h1 class="text-3xl font-semibold tracking-tight">
+                    <span class="text-red-500">RESP</span> Cache Monitor
+                </h1>
+                <p class="text-base text-slate-400 mt-1">Real-time cache observation via Pub/Sub + SSE</p>
+            </div>
+            <div class="flex items-center gap-2 text-base text-slate-400">
+                <span id="statusDot" class="inline-block w-3 h-3 rounded-full bg-red-500 transition-colors"></span>
+                <span id="statusText">Connecting...</span>
+            </div>
+        </div>
+
+        <!-- Connection Info -->
+        <div id="connectionInfo" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8"></div>
+
+        <!-- Operation Tabs -->
+        <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 mb-8">
+            <div class="flex gap-1 mb-5 border-b border-slate-700 pb-3">
+                <button onclick="switchTab('strings')" id="tab-strings"
+                        class="px-5 py-2 rounded-lg text-base font-medium transition-colors bg-blue-600 text-white">Strings</button>
+                <button onclick="switchTab('hashes')" id="tab-hashes"
+                        class="px-5 py-2 rounded-lg text-base font-medium transition-colors text-slate-400 hover:text-slate-200 hover:bg-slate-700">Hashes</button>
+                <button onclick="switchTab('counters')" id="tab-counters"
+                        class="px-5 py-2 rounded-lg text-base font-medium transition-colors text-slate-400 hover:text-slate-200 hover:bg-slate-700">Counters</button>
+                <button onclick="switchTab('keys')" id="tab-keys"
+                        class="px-5 py-2 rounded-lg text-base font-medium transition-colors text-slate-400 hover:text-slate-200 hover:bg-slate-700">Keys</button>
+            </div>
+
+            <!-- Strings Tab -->
+            <div id="panel-strings" class="tab-panel">
+                <div class="flex flex-wrap items-end gap-4">
+                    <div class="flex-1 min-w-[160px]">
+                        <label class="block text-sm uppercase tracking-wider text-slate-400 font-medium mb-1.5">Key</label>
+                        <input id="strKey" type="text" placeholder="e.g. demo:greeting"
+                               class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-base text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors">
+                    </div>
+                    <div class="flex-[2] min-w-[220px]">
+                        <label class="block text-sm uppercase tracking-wider text-slate-400 font-medium mb-1.5">Value</label>
+                        <input id="strValue" type="text" placeholder="e.g. hello from redis"
+                               class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-base text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors">
+                    </div>
+                    <div class="w-24">
+                        <label class="block text-sm uppercase tracking-wider text-slate-400 font-medium mb-1.5">TTL (s)</label>
+                        <input id="strTtl" type="number" min="1" placeholder="e.g. 30"
+                               class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-base text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors">
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="doStringSet()"
+                                class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-base px-6 py-2.5 rounded-lg transition-colors">SET</button>
+                        <button onclick="doStringGet()"
+                                class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-base px-6 py-2.5 rounded-lg transition-colors">GET</button>
+                        <button onclick="doStringGetDel()"
+                                class="bg-purple-600 hover:bg-purple-700 text-white font-medium text-base px-5 py-2.5 rounded-lg transition-colors">GETDEL</button>
+                        <button onclick="doStringTtl()"
+                                class="bg-cyan-600 hover:bg-cyan-700 text-white font-medium text-base px-5 py-2.5 rounded-lg transition-colors">TTL</button>
+                        <button onclick="doStringDel()"
+                                class="bg-red-600 hover:bg-red-700 text-white font-medium text-base px-6 py-2.5 rounded-lg transition-colors">DEL</button>
+                    </div>
+                </div>
+                <div id="strResult" class="mt-3 text-base font-mono text-slate-400 hidden"></div>
+                <p class="text-sm text-amber-400/80 mt-3">Cache-level default TTL: 300s (5 min). Entries expire automatically even without per-key TTL.</p>
+            </div>
+
+            <!-- Hashes Tab -->
+            <div id="panel-hashes" class="tab-panel hidden">
+                <div class="flex flex-wrap items-end gap-4 mb-4">
+                    <div class="flex-1 min-w-[160px]">
+                        <label class="block text-sm uppercase tracking-wider text-slate-400 font-medium mb-1.5">Key</label>
+                        <input id="hashKey" type="text" placeholder="e.g. demo:user"
+                               class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-base text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors">
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="doHashSet()"
+                                class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-base px-6 py-2.5 rounded-lg transition-colors">HSET</button>
+                        <button onclick="doHashGetAll()"
+                                class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-base px-6 py-2.5 rounded-lg transition-colors">HGETALL</button>
+                    </div>
+                </div>
+                <div id="hashFields" class="space-y-2">
+                    <div class="flex items-end gap-3">
+                        <div class="flex-1">
+                            <label class="block text-sm uppercase tracking-wider text-slate-400 font-medium mb-1.5">Field</label>
+                            <input type="text" placeholder="e.g. name" data-hash-field
+                                   class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-base text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm uppercase tracking-wider text-slate-400 font-medium mb-1.5">Value</label>
+                            <input type="text" placeholder="e.g. John" data-hash-value
+                                   class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-base text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors">
+                        </div>
+                        <button onclick="addHashFieldRow()"
+                                class="bg-slate-600 hover:bg-slate-500 text-slate-200 font-medium text-base px-4 py-2.5 rounded-lg transition-colors">+ Field</button>
+                    </div>
+                </div>
+                <div id="hashResult" class="mt-3 text-base font-mono text-slate-400 hidden"></div>
+            </div>
+
+            <!-- Counters Tab -->
+            <div id="panel-counters" class="tab-panel hidden">
+                <div class="flex flex-wrap items-end gap-4">
+                    <div class="flex-1 min-w-[160px]">
+                        <label class="block text-sm uppercase tracking-wider text-slate-400 font-medium mb-1.5">Key</label>
+                        <input id="counterKey" type="text" placeholder="e.g. demo:visits"
+                               class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-base text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors">
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="doIncr()"
+                                class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-base px-6 py-2.5 rounded-lg transition-colors">INCR</button>
+                        <button onclick="doDecr()"
+                                class="bg-amber-600 hover:bg-amber-700 text-white font-medium text-base px-6 py-2.5 rounded-lg transition-colors">DECR</button>
+                    </div>
+                </div>
+                <div id="counterResult" class="mt-3 text-base font-mono text-slate-400 hidden"></div>
+            </div>
+
+            <!-- Keys Tab -->
+            <div id="panel-keys" class="tab-panel hidden">
+                <div class="flex flex-wrap items-end gap-4">
+                    <div class="flex-1 min-w-[160px]">
+                        <label class="block text-sm uppercase tracking-wider text-slate-400 font-medium mb-1.5">Pattern</label>
+                        <input id="keysPattern" type="text" placeholder="* (all keys)" value="*"
+                               class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-base text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors">
+                    </div>
+                    <button onclick="doKeys()"
+                            class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-base px-6 py-2.5 rounded-lg transition-colors">KEYS</button>
+                    <button onclick="doFlush()"
+                            class="bg-red-600 hover:bg-red-700 text-white font-medium text-base px-5 py-2.5 rounded-lg transition-colors">FLUSH ALL</button>
+                </div>
+                <div id="keysResult" class="mt-3 hidden">
+                    <div class="bg-slate-900 rounded-lg border border-slate-700 p-4 font-mono text-base text-slate-300 max-h-48 overflow-y-auto"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Entries Table -->
+        <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden mb-8">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-700">
+                <h2 class="text-base font-semibold text-slate-300">Cache Entries</h2>
+                <span id="entryCount" class="text-sm text-slate-400">0 entries</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="border-b border-slate-700">
+                            <th class="text-left text-sm font-medium text-slate-400 uppercase tracking-wider px-6 py-3">Key</th>
+                            <th class="text-left text-sm font-medium text-slate-400 uppercase tracking-wider px-6 py-3">Value</th>
+                            <th class="text-left text-sm font-medium text-slate-400 uppercase tracking-wider px-6 py-3 w-24">Type</th>
+                            <th class="text-right text-sm font-medium text-slate-400 uppercase tracking-wider px-6 py-3 w-24">TTL</th>
+                            <th class="text-right text-sm font-medium text-slate-400 uppercase tracking-wider px-6 py-3 w-20"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="entriesBody">
+                        <tr><td colspan="5" class="text-center text-slate-500 py-12 text-base">No entries in cache</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Event Log -->
+        <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-700">
+                <h3 class="text-base font-semibold text-slate-300">Event Log
+                    <span class="text-sm font-normal text-slate-400 ml-2">Pub/Sub channel: cache-events</span>
+                </h3>
+            </div>
+            <div id="logEntries" class="px-6 py-4 max-h-48 overflow-y-auto font-mono text-sm leading-relaxed"></div>
+        </div>
+    </div>
+
+    <script>
+        const entries = new Map();
+        let eventSource = null;
+
+        let ttlInterval = null;
+
+        function init() {
+            loadInfo();
+            loadSnapshot();
+            connectSSE();
+            ttlInterval = setInterval(refreshTtl, 2000);
+        }
+
+        function refreshTtl() {
+            fetch('/api/snapshot').then(r => {
+                if (!r.ok) return;
+                return r.json();
+            }).then(data => {
+                if (!data || !Array.isArray(data)) return;
+                const currentKeys = new Set(data.map(e => e.key));
+                const expiredKeys = [];
+                for (const key of entries.keys()) {
+                    if (!currentKeys.has(key)) expiredKeys.push(key);
+                }
+                expiredKeys.forEach(k => {
+                    entries.delete(k);
+                    addLog('EXPIRED', k, '');
+                });
+                entries.clear();
+                data.forEach(e => entries.set(e.key, { value: e.value, type: e.type, ttl: e.ttl }));
+                render(expiredKeys.length > 0 ? expiredKeys[0] : null, expiredKeys.length > 0 ? 'deleted' : null);
+            }).catch(() => {});
+        }
+
+        // ── Tabs ────────────────────────────────────────────────────
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+            document.getElementById('panel-' + tab).classList.remove('hidden');
+            document.querySelectorAll('[id^="tab-"]').forEach(b => {
+                b.className = 'px-5 py-2 rounded-lg text-base font-medium transition-colors text-slate-400 hover:text-slate-200 hover:bg-slate-700';
+            });
+            document.getElementById('tab-' + tab).className = 'px-5 py-2 rounded-lg text-base font-medium transition-colors bg-blue-600 text-white';
+        }
+
+        // ── Connection ──────────────────────────────────────────────
+
+        function loadInfo() {
+            fetch('/api/info').then(r => r.json()).then(info => {
+                document.getElementById('connectionInfo').innerHTML = [
+                    card('Cluster', info.cluster),
+                    card('Cache', info.cache),
+                    card('Mode', info.mode),
+                    card('Host', info.backend_host),
+                    card('Port', info.backend_port),
+                    card('Status', info.status === 'connected'
+                        ? '<span class="text-emerald-400">Connected</span>'
+                        : '<span class="text-red-400">Disconnected</span>')
+                ].join('');
+            }).catch(() => {});
+        }
+
+        function card(label, value) {
+            return `<div class="bg-slate-800 border border-slate-700 rounded-lg px-5 py-4">
+                <div class="text-xs uppercase tracking-wider text-slate-400 font-medium">${label}</div>
+                <div class="text-base font-medium text-slate-200 mt-1">${value}</div>
+            </div>`;
+        }
+
+        // ── Snapshot ────────────────────────────────────────────────
+
+        function loadSnapshot() {
+            fetch('/api/snapshot').then(r => {
+                if (!r.ok) return;
+                return r.json();
+            }).then(data => {
+                if (!data || !Array.isArray(data)) return;
+                entries.clear();
+                data.forEach(e => entries.set(e.key, { value: e.value, type: e.type, ttl: e.ttl }));
+                render();
+            }).catch(() => {});
+        }
+
+        // ── SSE ─────────────────────────────────────────────────────
+
+        function connectSSE() {
+            if (eventSource) eventSource.close();
+            eventSource = new EventSource('/api/events');
+
+            eventSource.addEventListener('connected', () => {
+                document.getElementById('statusDot').className = 'inline-block w-3 h-3 rounded-full bg-emerald-500 transition-colors';
+                document.getElementById('statusText').textContent = 'Live (SSE + Pub/Sub)';
+            });
+
+            eventSource.addEventListener('cache-event', e => {
+                const msg = e.data;
+                const parts = msg.split('\t');
+                const op = parts[0];
+                const key = parts[1];
+                const value = parts.slice(2).join('\t');
+
+                if (op === 'DEL' || op === 'GETDEL') {
+                    entries.delete(key);
+                    render(key, 'deleted');
+                } else {
+                    const isUpdate = entries.has(key);
+                    entries.set(key, { value: value, type: 'string', ttl: -1 });
+                    render(key, isUpdate ? 'updated' : 'added');
+                }
+                addLog(op, key, value);
+            });
+
+            eventSource.onopen = () => {
+                document.getElementById('statusDot').className = 'inline-block w-3 h-3 rounded-full bg-emerald-500 transition-colors';
+                document.getElementById('statusText').textContent = 'Live (SSE + Pub/Sub)';
+            };
+
+            eventSource.onerror = () => {
+                document.getElementById('statusDot').className = 'inline-block w-3 h-3 rounded-full bg-red-500 transition-colors';
+                document.getElementById('statusText').textContent = 'Reconnecting...';
+            };
+        }
+
+        // ── String operations ───────────────────────────────────────
+
+        function doStringSet() {
+            const key = document.getElementById('strKey').value.trim();
+            const value = document.getElementById('strValue').value;
+            const ttl = document.getElementById('strTtl').value.trim();
+            if (!key) return;
+            let url = '/api/strings/' + encodeURIComponent(key);
+            if (ttl) url += '?ttlSeconds=' + ttl;
+            fetch(url, {
+                method: 'PUT', headers: {'Content-Type': 'text/plain'}, body: value
+            }).then(r => r.json()).then(data => {
+                let msg = 'SET ' + key + ' -> OK';
+                if (ttl) msg += ' (TTL: ' + ttl + 's)';
+                if (data.overwritten) msg += ' [OVERWRITTEN - key already existed]';
+                showResult('strResult', msg, data.overwritten ? 'text-amber-400' : null);
+                document.getElementById('strKey').value = '';
+                document.getElementById('strValue').value = '';
+                document.getElementById('strTtl').value = '';
+            });
+        }
+
+        function doStringGet() {
+            const key = document.getElementById('strKey').value.trim();
+            if (!key) return;
+            fetch('/api/strings/' + encodeURIComponent(key))
+                .then(r => {
+                    if (r.status === 404) {
+                        showResult('strResult', 'GET ' + key + ' -> (nil)');
+                        return null;
+                    }
+                    return r.json();
+                })
+                .then(data => {
+                    if (!data) return;
+                    showResult('strResult', 'GET ' + key + ' -> "' + data.value + '" (TTL: ' + formatTtlText(data.ttl) + ')');
+                });
+        }
+
+        function doStringGetDel() {
+            const key = document.getElementById('strKey').value.trim();
+            if (!key) return;
+            fetch('/api/strings/' + encodeURIComponent(key) + '/getdel', { method: 'DELETE' })
+                .then(r => {
+                    if (r.status === 404) {
+                        showResult('strResult', 'GETDEL ' + key + ' -> (nil) key does not exist');
+                        return null;
+                    }
+                    return r.json();
+                })
+                .then(data => {
+                    if (!data) return;
+                    showResult('strResult', 'GETDEL ' + key + ' -> "' + data.value + '" (key deleted)', 'text-purple-400');
+                    document.getElementById('strKey').value = '';
+                });
+        }
+
+        function doStringTtl() {
+            const key = document.getElementById('strKey').value.trim();
+            if (!key) return;
+            fetch('/api/strings/' + encodeURIComponent(key) + '/ttl')
+                .then(r => r.json())
+                .then(data => {
+                    let msg;
+                    if (data.ttl === -2) msg = 'TTL ' + key + ' -> key does not exist';
+                    else if (data.ttl === -1) msg = 'TTL ' + key + ' -> no expiration set';
+                    else msg = 'TTL ' + key + ' -> ' + data.ttl + 's remaining';
+                    showResult('strResult', msg, 'text-cyan-400');
+                });
+        }
+
+        function doStringDel() {
+            const key = document.getElementById('strKey').value.trim();
+            if (!key) return;
+            fetch('/api/strings/' + encodeURIComponent(key), { method: 'DELETE' })
+                .then(r => r.json()).then(data => {
+                    showResult('strResult', 'DEL ' + key + ' -> ' + (data.deleted ? 'OK' : 'not found'));
+                    document.getElementById('strKey').value = '';
+                });
+        }
+
+        // ── Hash operations ─────────────────────────────────────────
+
+        function addHashFieldRow() {
+            const container = document.getElementById('hashFields');
+            const row = document.createElement('div');
+            row.className = 'flex items-end gap-3 mt-2';
+            row.innerHTML = `
+                <div class="flex-1">
+                    <input type="text" placeholder="field name" data-hash-field
+                           class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-base text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors">
+                </div>
+                <div class="flex-1">
+                    <input type="text" placeholder="field value" data-hash-value
+                           class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-base text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors">
+                </div>
+                <button onclick="this.parentElement.remove()"
+                        class="bg-red-600/50 hover:bg-red-600 text-white font-medium text-sm px-3 py-2.5 rounded-lg transition-colors">X</button>
+            `;
+            container.appendChild(row);
+        }
+
+        function doHashSet() {
+            const key = document.getElementById('hashKey').value.trim();
+            if (!key) return;
+            const fields = {};
+            const fieldInputs = document.querySelectorAll('[data-hash-field]');
+            const valueInputs = document.querySelectorAll('[data-hash-value]');
+            for (let i = 0; i < fieldInputs.length; i++) {
+                const f = fieldInputs[i].value.trim();
+                const v = valueInputs[i].value;
+                if (f) fields[f] = v;
+            }
+            if (Object.keys(fields).length === 0) return;
+            fetch('/api/hashes/' + encodeURIComponent(key), {
+                method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(fields)
+            }).then(r => r.json()).then(data => {
+                showResult('hashResult', 'HSET ' + key + ' -> ' + data.fields_count + ' fields');
+                loadSnapshot();
+            });
+        }
+
+        function doHashGetAll() {
+            const key = document.getElementById('hashKey').value.trim();
+            if (!key) return;
+            fetch('/api/hashes/' + encodeURIComponent(key))
+                .then(r => {
+                    if (r.status === 404) {
+                        showResult('hashResult', 'HGETALL ' + key + ' -> (empty or not found)');
+                        return null;
+                    }
+                    return r.json();
+                })
+                .then(data => {
+                    if (!data) return;
+                    const pairs = Object.entries(data.fields).map(([k, v]) => k + '="' + v + '"').join(', ');
+                    showResult('hashResult', 'HGETALL ' + key + ' -> {' + pairs + '}');
+                });
+        }
+
+        // ── Counter operations ──────────────────────────────────────
+
+        function doIncr() {
+            const key = document.getElementById('counterKey').value.trim();
+            if (!key) return;
+            fetch('/api/counters/' + encodeURIComponent(key) + '/incr', { method: 'POST' })
+                .then(r => r.json()).then(data => {
+                    showResult('counterResult', 'INCR ' + key + ' -> ' + data.value);
+                });
+        }
+
+        function doDecr() {
+            const key = document.getElementById('counterKey').value.trim();
+            if (!key) return;
+            fetch('/api/counters/' + encodeURIComponent(key) + '/decr', { method: 'POST' })
+                .then(r => r.json()).then(data => {
+                    showResult('counterResult', 'DECR ' + key + ' -> ' + data.value);
+                });
+        }
+
+        // ── Keys ────────────────────────────────────────────────────
+
+        function doKeys() {
+            const pattern = document.getElementById('keysPattern').value.trim() || '*';
+            fetch('/api/keys?pattern=' + encodeURIComponent(pattern))
+                .then(r => r.json()).then(data => {
+                    const el = document.getElementById('keysResult');
+                    el.classList.remove('hidden');
+                    const list = data.keys.length > 0
+                        ? data.keys.sort().map(k => esc(k)).join('\n')
+                        : '(no keys match "' + esc(pattern) + '")';
+                    el.querySelector('div').innerHTML = '<div class="text-sm text-slate-400 mb-2">' + data.count + ' keys matching "' + esc(pattern) + '"</div><pre class="whitespace-pre-wrap">' + list + '</pre>';
+                });
+        }
+
+        function doFlush() {
+            if (!confirm('Flush all entries?')) return;
+            const keys = [...entries.keys()];
+            Promise.all(keys.map(k =>
+                fetch('/api/strings/' + encodeURIComponent(k), { method: 'DELETE' })
+            )).then(() => loadSnapshot());
+        }
+
+        // ── Result display ──────────────────────────────────────────
+
+        function showResult(id, text, colorClass) {
+            const el = document.getElementById(id);
+            el.classList.remove('hidden');
+            el.className = el.className.replace(/text-\S+/g, '');
+            el.classList.add(colorClass || 'text-slate-400');
+            el.textContent = text;
+            setTimeout(() => el.classList.add('hidden'), 8000);
+        }
+
+        // ── Table rendering ─────────────────────────────────────────
+
+        function formatTtl(ttl) {
+            if (ttl === -1) return '<span class="text-slate-500">&infin;</span>';
+            if (ttl === -2) return '<span class="text-red-400">expired</span>';
+            if (ttl >= 3600) return Math.floor(ttl / 3600) + 'h ' + Math.floor((ttl % 3600) / 60) + 'm';
+            if (ttl >= 60) return Math.floor(ttl / 60) + 'm ' + (ttl % 60) + 's';
+            return ttl + 's';
+        }
+
+        function formatTtlText(ttl) {
+            if (ttl === -1) return 'no expiration';
+            if (ttl === -2) return 'expired';
+            if (ttl >= 3600) return Math.floor(ttl / 3600) + 'h ' + Math.floor((ttl % 3600) / 60) + 'm';
+            if (ttl >= 60) return Math.floor(ttl / 60) + 'm ' + (ttl % 60) + 's';
+            return ttl + 's';
+        }
+
+        function render(highlightKey, highlightClass) {
+            const body = document.getElementById('entriesBody');
+            document.getElementById('entryCount').textContent = entries.size + ' entries';
+
+            if (entries.size === 0) {
+                body.innerHTML = '<tr><td colspan="5" class="text-center text-slate-500 py-12 text-base">No entries in cache</td></tr>';
+                return;
+            }
+
+            body.innerHTML = '';
+            const sorted = [...entries.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+            for (const [key, data] of sorted) {
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors';
+                if (key === highlightKey && highlightClass) {
+                    tr.classList.add('flash-' + highlightClass);
+                }
+                const safeKey = esc(key);
+                const typeColor = data.type === 'hash' ? 'text-amber-400' : data.type === 'string' ? 'text-violet-400' : 'text-slate-400';
+                tr.innerHTML = `
+                    <td class="px-6 py-3 text-base font-mono text-blue-400">${safeKey}</td>
+                    <td class="px-6 py-3 text-base font-mono text-slate-300 break-all max-w-xs truncate">${esc(data.value)}</td>
+                    <td class="px-6 py-3 text-sm ${typeColor}">${esc(data.type)}</td>
+                    <td class="px-6 py-3 text-sm text-right ${data.ttl > 0 && data.ttl <= 30 ? 'text-orange-400 font-semibold' : data.ttl > 0 && data.ttl <= 60 ? 'text-amber-400' : 'text-slate-400'}">${formatTtl(data.ttl)}</td>
+                    <td class="px-6 py-3 text-right">
+                        <button onclick="deleteEntry('${safeKey}')"
+                                class="text-sm text-red-400 hover:text-red-300 font-medium transition-colors">DEL</button>
+                    </td>
+                `;
+                body.appendChild(tr);
+            }
+        }
+
+        function deleteEntry(key) {
+            fetch('/api/strings/' + encodeURIComponent(key), { method: 'DELETE' })
+                .then(() => { });
+        }
+
+        // ── Event log ───────────────────────────────────────────────
+
+        function addLog(op, key, value) {
+            const el = document.getElementById('logEntries');
+            const ts = new Date().toLocaleTimeString();
+            const colors = { DEL: 'text-red-400', GETDEL: 'text-purple-400', EXPIRED: 'text-orange-400', HSET: 'text-amber-400' };
+            const color = colors[op] || 'text-emerald-400';
+            let text;
+            if (op === 'DEL') text = `${op} ${key}`;
+            else if (op === 'GETDEL') text = `${op} ${key} -> "${value}" (key deleted)`;
+            else if (op === 'EXPIRED') text = `${op} ${key} (auto-expired by TTL)`;
+            else text = `${op} ${key} = ${value}`;
+            el.innerHTML = `<div class="${color}"><span class="text-slate-500">${ts}</span> ${esc(text)}</div>` + el.innerHTML;
+            while (el.children.length > 50) el.removeChild(el.lastChild);
+        }
+
+        function esc(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

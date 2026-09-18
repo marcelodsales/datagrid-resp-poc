@@ -1,0 +1,31 @@
+# Internal reference material — not part of deliverable
+Projects/
+Datagrid Bankia/
+Documentation/Ansible/
+Documentation/EAP 8/
+
+# Java build output
+**/target/
+
+# .NET build output
+**/bin/
+**/obj/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Support cases (confidential)
+cases/
+
+# Generated exports
+DEMO.html
+
+# Confidential emails
+Red Hat Mail*.pdf
+
+# Cluster credentials
+kubeconfig

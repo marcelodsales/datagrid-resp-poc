@@ -1,0 +1,23 @@
+apiVersion: infinispan.org/v2alpha1
+kind: Cache
+metadata:
+  name: user-sessions
+  namespace: rhdg-poc
+spec:
+  clusterName: platform
+  name: user-sessions
+  template: |-
+    distributedCache:
+      mode: "SYNC"
+      owners: "2"
+      statistics: "true"
+      encoding:
+        mediaType: "application/x-protostream"
+      expiration:
+        lifespan: "600000"
+      partitionHandling:
+        whenSplit: "DENY_READ_WRITES"
+        mergePolicy: "PREFERRED_NON_NULL"
+      memory:
+        maxCount: "100000"
+        whenFull: "REMOVE"

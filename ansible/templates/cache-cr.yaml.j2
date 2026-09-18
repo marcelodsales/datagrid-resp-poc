@@ -1,0 +1,40 @@
+apiVersion: infinispan.org/v2alpha1
+kind: Cache
+metadata:
+  name: {{ cache_name }}
+  namespace: rhdg-poc
+spec:
+  clusterName: {{ cluster_name }}
+  name: {{ cache_name }}
+  template: |-
+{% if cache_mode == "distributed" %}
+    distributedCache:
+      mode: "SYNC"
+      owners: "{{ owners | default('2') }}"
+      statistics: "true"
+      encoding:
+        mediaType: "{{ encoding | default('application/x-protostream') }}"
+{% if ttl_minutes is defined and ttl_minutes | int > 0 %}
+      expiration:
+        lifespan: "{{ (ttl_minutes | int * 60000) }}"
+{% endif %}
+{% if max_entries is defined and max_entries | int > 0 %}
+      memory:
+        maxCount: "{{ max_entries }}"
+        whenFull: "REMOVE"
+{% endif %}
+{% elif cache_mode == "replicated" %}
+    replicatedCache:
+      mode: "SYNC"
+      statistics: "true"
+      encoding:
+        mediaType: "{{ encoding | default('application/x-protostream') }}"
+{% if ttl_minutes is defined and ttl_minutes | int > 0 %}
+      expiration:
+        lifespan: "{{ (ttl_minutes | int * 60000) }}"
+{% endif %}
+{% if max_entries is defined and max_entries | int > 0 %}
+      memory:
+        maxCount: "{{ max_entries }}"
+{% endif %}
+{% endif %}

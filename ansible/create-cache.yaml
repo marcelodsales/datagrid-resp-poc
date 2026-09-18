@@ -1,0 +1,93 @@
+---
+- name: Create Data Grid cache via GitOps
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    gitea_url: "http://gitea.openshift-gitops.svc:3000"
+    gitea_user: "gitea"
+    gitea_password: "gitea2026"
+    gitea_repo: "datagrid-poc"
+    manifest_dir: "manifests"
+
+  tasks:
+    - name: Validate required variables
+      ansible.builtin.assert:
+        that:
+          - cache_name is defined and cache_name | length > 0
+          - cluster_name is defined and cluster_name in ['healthcare', 'platform']
+          - cache_mode is defined and cache_mode in ['distributed', 'replicated']
+        fail_msg: "Missing or invalid required variables: cache_name, cluster_name, cache_mode"
+
+    - name: Generate Cache CR from template
+      ansible.builtin.template:
+        src: templates/cache-cr.yaml.j2
+        dest: "/tmp/cache-{{ cache_name }}.yaml"
+      register: template_result
+
+    - name: Read generated manifest
+      ansible.builtin.slurp:
+        src: "/tmp/cache-{{ cache_name }}.yaml"
+      register: manifest_content
+
+    - name: Display generated manifest for review
+      ansible.builtin.debug:
+        msg: "{{ manifest_content.content | b64decode }}"
+
+    - name: Clone Gitea repository
+      ansible.builtin.git:
+        repo: "http://{{ gitea_user }}:{{ gitea_password }}@gitea.openshift-gitops.svc:3000/{{ gitea_user }}/{{ gitea_repo }}.git"
+        dest: "/tmp/gitea-{{ gitea_repo }}"
+        version: main
+        force: true
+
+    - name: Determine next manifest number
+      ansible.builtin.shell: |
+        ls /tmp/gitea-{{ gitea_repo }}/{{ manifest_dir }}/*.yaml 2>/dev/null \
+          | xargs -I{} basename {} \
+          | grep -oP '^\d+' \
+          | sort -n \
+          | tail -1
+      register: last_number
+      changed_when: false
+
+    - name: Set manifest filename
+      ansible.builtin.set_fact:
+        manifest_number: "{{ '%02d' % ((last_number.stdout | default('44') | int) + 1) }}"
+
+    - name: Copy manifest to repository
+      ansible.builtin.copy:
+        src: "/tmp/cache-{{ cache_name }}.yaml"
+        dest: "/tmp/gitea-{{ gitea_repo }}/{{ manifest_dir }}/{{ manifest_number }}-cache-{{ cache_name }}.yaml"
+
+    - name: Configure git user
+      ansible.builtin.shell: |
+        cd /tmp/gitea-{{ gitea_repo }}
+        git config user.email "aap@redhat.com"
+        git config user.name "Ansible Automation Platform"
+      changed_when: false
+
+    - name: Commit and push to Gitea
+      ansible.builtin.shell: |
+        cd /tmp/gitea-{{ gitea_repo }}
+        git add {{ manifest_dir }}/{{ manifest_number }}-cache-{{ cache_name }}.yaml
+        git commit -m "Add cache {{ cache_name }} ({{ cache_mode }}) to cluster {{ cluster_name }}"
+        git push origin main
+      register: git_push
+
+    - name: Display result
+      ansible.builtin.debug:
+        msg: >-
+          Cache '{{ cache_name }}' manifest committed to Gitea as
+          {{ manifest_number }}-cache-{{ cache_name }}.yaml.
+          ArgoCD will detect the change within ~30 seconds and create the cache
+          on cluster '{{ cluster_name }}'.
+
+    - name: Clean up temporary files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/tmp/cache-{{ cache_name }}.yaml"
+        - "/tmp/gitea-{{ gitea_repo }}"

@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-client-app
+  namespace: rhdg-poc
+  labels:
+    app: redis-client-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-client-app
+  template:
+    metadata:
+      labels:
+        app: redis-client-app
+    spec:
+      containers:
+        - name: redis-client-app
+          image: redis-client-app:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_USERNAME
+              value: "default"
+            - name: REDIS_PASSWORD
+              value: "r3d1s-p0c-2026"
+            - name: REDIS_SSL
+              value: "false"
+            - name: CACHE_CLUSTER
+              value: "redis-standalone"
+            - name: CACHE_NAME
+              value: "db0"
+            - name: CACHE_MODE
+              value: "standalone"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10

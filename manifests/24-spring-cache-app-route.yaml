@@ -1,0 +1,16 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: spring-cache-app
+  namespace: rhdg-poc
+  labels:
+    app: spring-cache-app
+spec:
+  to:
+    kind: Service
+    name: spring-cache-app
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

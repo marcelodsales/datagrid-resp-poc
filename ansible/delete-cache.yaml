@@ -1,0 +1,92 @@
+---
+- name: Delete Data Grid cache via GitOps
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    gitea_url: "http://gitea.openshift-gitops.svc:3000"
+    gitea_user: "gitea"
+    gitea_password: "gitea2026"
+    gitea_repo: "datagrid-poc"
+    manifest_dir: "manifests"
+
+  tasks:
+    - name: Validate required variables
+      ansible.builtin.assert:
+        that:
+          - cache_name is defined and cache_name | length > 0
+        fail_msg: "Missing required variable: cache_name"
+
+    - name: Clone Gitea repository
+      ansible.builtin.git:
+        repo: "http://{{ gitea_user }}:{{ gitea_password }}@gitea.openshift-gitops.svc:3000/{{ gitea_user }}/{{ gitea_repo }}.git"
+        dest: "/tmp/gitea-{{ gitea_repo }}"
+        version: main
+        force: true
+
+    - name: Find manifest file for this cache
+      ansible.builtin.find:
+        paths: "/tmp/gitea-{{ gitea_repo }}/{{ manifest_dir }}"
+        patterns: "*-cache-{{ cache_name }}.yaml"
+      register: found_files
+
+    - name: Fail if manifest not found
+      ansible.builtin.fail:
+        msg: "No manifest found for cache '{{ cache_name }}' in {{ manifest_dir }}/"
+      when: found_files.files | length == 0
+
+    - name: Remove manifest from repository
+      ansible.builtin.file:
+        path: "{{ found_files.files[0].path }}"
+        state: absent
+
+    - name: Configure git user
+      ansible.builtin.shell: |
+        cd /tmp/gitea-{{ gitea_repo }}
+        git config user.email "aap@redhat.com"
+        git config user.name "Ansible Automation Platform"
+      changed_when: false
+
+    - name: Commit and push removal to Gitea
+      ansible.builtin.shell: |
+        cd /tmp/gitea-{{ gitea_repo }}
+        git add -A
+        git commit -m "Remove cache {{ cache_name }}"
+        git push origin main
+      register: git_push
+
+    - name: Force ArgoCD to refresh
+      kubernetes.core.k8s:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        name: datagrid-poc
+        namespace: openshift-gitops
+        definition:
+          metadata:
+            annotations:
+              argocd.argoproj.io/refresh: "hard"
+        merge_type: merge
+
+    - name: Wait for ArgoCD to sync the removal
+      ansible.builtin.pause:
+        seconds: 15
+
+    - name: Delete the Cache CR from OpenShift
+      kubernetes.core.k8s:
+        api_version: infinispan.org/v2alpha1
+        kind: Cache
+        name: "{{ cache_name }}"
+        namespace: rhdg-poc
+        state: absent
+
+    - name: Display result
+      ansible.builtin.debug:
+        msg: >-
+          Cache '{{ cache_name }}' manifest removed from Gitea and CR deleted
+          from OpenShift. ArgoCD will not recreate it (manifest no longer in Git).
+
+    - name: Clean up temporary files
+      ansible.builtin.file:
+        path: "/tmp/gitea-{{ gitea_repo }}"
+        state: absent

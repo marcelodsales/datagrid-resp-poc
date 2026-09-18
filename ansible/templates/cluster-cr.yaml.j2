@@ -1,0 +1,26 @@
+apiVersion: infinispan.org/v1
+kind: Infinispan
+metadata:
+  name: {{ cluster_name }}
+  namespace: rhdg-poc
+  annotations:
+    infinispan.org/monitoring: "true"
+spec:
+  replicas: {{ replicas | default('2') }}
+  version: 8.6.0-1
+  service:
+    type: DataGrid
+{% if persistent_storage | default(false) | bool %}
+    container:
+      storage: {{ storage_size | default('1Gi') }}
+      ephemeralStorage: false
+{% endif %}
+  container:
+    cpu: "{{ cpu | default('500m') }}"
+    memory: "{{ memory | default('1Gi') }}"
+  security:
+    endpointSecretName: {{ cluster_name }}-credentials
+    endpointEncryption:
+      type: Service
+  expose:
+    type: Route

@@ -1,0 +1,19 @@
+apiVersion: infinispan.org/v2alpha1
+kind: Cache
+metadata:
+  name: app-config
+  namespace: rhdg-poc
+spec:
+  clusterName: healthcare
+  name: app-config
+  template: |-
+    replicatedCache:
+      mode: "SYNC"
+      statistics: "true"
+      encoding:
+        mediaType: "application/x-protostream"
+      expiration:
+        lifespan: "600000"
+      memory:
+        maxCount: "10000"
+        whenFull: "REMOVE"

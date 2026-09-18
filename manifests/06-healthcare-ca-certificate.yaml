@@ -1,0 +1,17 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: healthcare-ca
+  namespace: rhdg-poc
+spec:
+  isCA: true
+  commonName: healthcare-ca
+  secretName: healthcare-ca-tls
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: healthcare-selfsigned
+    kind: Issuer
+  duration: 87600h
+  renewBefore: 8760h

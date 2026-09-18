@@ -1,0 +1,22 @@
+spec:
+  template:
+    spec:
+      containers:
+        - name: redis-client-app
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_USERNAME
+              value: "default"
+            - name: REDIS_PASSWORD
+              value: "r3d1s-p0c-2026"
+            - name: REDIS_SSL
+              value: "false"
+            - name: CACHE_CLUSTER
+              value: "redis-standalone"
+            - name: CACHE_NAME
+              value: "db0"
+            - name: CACHE_MODE
+              value: "standalone"

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-server-config
+  namespace: rhdg-poc
+data:
+  infinispan-config.yaml: |
+    infinispan:
+      server:
+        endpoints:
+          - securityRealm: default
+            socketBinding: default
+            hotrodConnector: ~
+            restConnector: ~
