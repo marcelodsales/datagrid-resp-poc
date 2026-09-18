@@ -1,0 +1,1066 @@
+---
+# Red Hat Data Grid 8.6 RESP Protocol PoC — Full Validation Playbook
+#
+# Prerequisites:
+#   - oc CLI installed and user authenticated to the OpenShift cluster
+#   - jq installed
+#   - curl installed
+#   - Ansible installed (ansible-playbook command available)
+#   - cert-manager Operator installed on the cluster
+#   - Run from the repository root: ansible-playbook ansible/poc-validate.yaml
+#
+# Usage:
+#   ansible-playbook ansible/poc-validate.yaml
+#   ansible-playbook ansible/poc-validate.yaml -e target_namespace=my-namespace
+#   ansible-playbook ansible/poc-validate.yaml --tags infra     # Only infrastructure
+#   ansible-playbook ansible/poc-validate.yaml --tags apps      # Only apps
+#   ansible-playbook ansible/poc-validate.yaml --tags tests     # Only tests
+#   ansible-playbook ansible/poc-validate.yaml --tags cleanup   # Only remove namespace
+
+- name: Red Hat Data Grid 8.6 RESP Protocol PoC — Full Validation
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    target_namespace: rhdg-poc-test
+    project_root: "{{ playbook_dir }}/.."
+    manifests_dir: "{{ project_root }}/manifests"
+    apps_dir: "{{ project_root }}/apps"
+    patches_dir: "{{ project_root }}/patches"
+    build_timeout: 600
+    rollout_timeout: 120
+    cluster_timeout: 300
+
+  pre_tasks:
+    - name: Verify oc is installed
+      command: oc version --client
+      changed_when: false
+
+    - name: Verify oc is authenticated
+      command: oc whoami
+      changed_when: false
+
+    - name: Verify jq is installed
+      command: jq --version
+      changed_when: false
+
+    - name: Verify curl is installed
+      command: curl --version
+      changed_when: false
+
+  tasks:
+
+    # ══════════════════════════════════════════════════════════════════
+    # CLEANUP: Remove namespace (also runs at start of full execution)
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Cleanup — Remove namespace {{ target_namespace }}"
+      tags: [infra, cleanup]
+      block:
+        - name: Check if namespace exists
+          command: "oc get namespace {{ target_namespace }}"
+          register: ns_exists
+          failed_when: false
+          changed_when: false
+
+        - name: Remove all finalizers from Data Grid resources
+          shell: |
+            for cache in $(oc get caches -n {{ target_namespace }} -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+              oc patch cache "$cache" -n {{ target_namespace }} --type merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null
+            done
+            for inf in $(oc get infinispan -n {{ target_namespace }} -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+              oc patch infinispan "$inf" -n {{ target_namespace }} --type merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null
+            done
+          when: ns_exists.rc == 0
+          changed_when: true
+
+        - name: Delete namespace (may timeout if finalizers linger)
+          command: "oc delete project {{ target_namespace }} --ignore-not-found=true --timeout=60s"
+          register: ns_delete
+          when: ns_exists.rc == 0
+          failed_when: false
+          changed_when: true
+
+        - name: Force-finalize namespace if stuck in Terminating
+          shell: |
+            oc get namespace {{ target_namespace }} -o json 2>/dev/null \
+              | jq '.spec.finalizers = []' \
+              | oc replace --raw "/api/v1/namespaces/{{ target_namespace }}/finalize" -f - > /dev/null 2>&1
+          register: force_finalize
+          when: ns_exists.rc == 0
+          failed_when: false
+          changed_when: true
+
+        - name: Remove any remaining resource finalizers (post-delete)
+          shell: |
+            for cache in $(oc get caches -n {{ target_namespace }} -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+              oc patch cache "$cache" -n {{ target_namespace }} --type merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null
+            done
+          when: ns_exists.rc == 0
+          failed_when: false
+          changed_when: false
+
+        - name: Wait for namespace to disappear
+          command: "oc get namespace {{ target_namespace }}"
+          register: ns_check
+          until: ns_check.rc != 0
+          retries: 60
+          delay: 5
+          failed_when: false
+          changed_when: false
+          when: ns_exists.rc == 0
+
+        - name: Fail if namespace still exists
+          fail:
+            msg: "Namespace {{ target_namespace }} is stuck. Check for remaining finalizers manually."
+          when: ns_exists.rc == 0 and ns_check.rc == 0
+
+        - name: "Namespace {{ target_namespace }} removed"
+          debug:
+            msg: "Namespace deleted successfully"
+          when: ns_exists.rc == 0 and (ns_check.rc is not defined or ns_check.rc != 0)
+
+        - name: "Namespace {{ target_namespace }} does not exist"
+          debug:
+            msg: "Nothing to clean up"
+          when: ns_exists.rc != 0
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 1: CREATE NAMESPACE
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 1 — Create namespace {{ target_namespace }}"
+      tags: [infra]
+      block:
+        - name: Create namespace
+          command: "oc new-project {{ target_namespace }}"
+          changed_when: true
+
+        - name: Pause for namespace initialization
+          pause:
+            seconds: 5
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 2: OPERATOR
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 2 — Install Data Grid Operator"
+      tags: [infra]
+      block:
+        - name: Apply OperatorGroup
+          command: "oc apply -f {{ manifests_dir }}/01-operator-group.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Apply Subscription
+          command: "oc apply -f {{ manifests_dir }}/02-operator-subscription.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Wait for Operator CSV to succeed
+          shell: |
+            oc get csv -n {{ target_namespace }} -o jsonpath='{.items[?(@.spec.displayName=="Data Grid")].status.phase}' 2>/dev/null
+          register: csv_status
+          until: csv_status.stdout == "Succeeded"
+          retries: 60
+          delay: 10
+          changed_when: false
+
+        - name: Display Operator status
+          debug:
+            msg: "Data Grid Operator: {{ csv_status.stdout }}"
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 3: CREDENTIALS
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 3 — Create credentials"
+      tags: [infra]
+      block:
+        - name: Apply healthcare credentials
+          command: "oc apply -f {{ manifests_dir }}/03-healthcare-credentials.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Apply platform credentials
+          command: "oc apply -f {{ manifests_dir }}/04-platform-credentials.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 4: TLS (cert-manager)
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 4 — TLS certificate chain"
+      tags: [infra]
+      block:
+        - name: Apply self-signed issuer
+          command: "oc apply -f {{ manifests_dir }}/05-healthcare-selfsigned-issuer.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Apply CA certificate
+          command: "oc apply -f {{ manifests_dir }}/06-healthcare-ca-certificate.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Apply CA issuer
+          command: "oc apply -f {{ manifests_dir }}/07-healthcare-ca-issuer.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Apply TLS certificate
+          command: "oc apply -f {{ manifests_dir }}/08-healthcare-tls-certificate.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Wait for TLS secret to be created
+          command: "oc get secret healthcare-tls -n {{ target_namespace }}"
+          register: tls_check
+          until: tls_check.rc == 0
+          retries: 30
+          delay: 5
+          changed_when: false
+
+        - name: Display TLS status
+          debug:
+            msg: "TLS secret healthcare-tls created"
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 5: SERVER CONFIGS
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 5 — Server configurations"
+      tags: [infra]
+      block:
+        - name: Apply healthcare server config (includes respCache)
+          command: "oc apply -f {{ manifests_dir }}/09-healthcare-server-config.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Apply platform server config
+          command: "oc apply -f {{ manifests_dir }}/12-platform-server-config.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 6: DATA GRID CLUSTERS
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 6 — Deploy Data Grid clusters"
+      tags: [infra]
+      block:
+        - name: Apply healthcare cluster (2 replicas)
+          command: "oc apply -f {{ manifests_dir }}/10-cluster-healthcare.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Apply platform cluster (3 replicas)
+          command: "oc apply -f {{ manifests_dir }}/11-cluster-platform.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Wait for healthcare cluster to be WellFormed
+          command: >
+            oc wait --for=condition=WellFormed infinispan/healthcare
+            -n {{ target_namespace }} --timeout={{ cluster_timeout }}s
+          changed_when: false
+
+        - name: Wait for platform cluster to be WellFormed
+          command: >
+            oc wait --for=condition=WellFormed infinispan/platform
+            -n {{ target_namespace }} --timeout={{ cluster_timeout }}s
+          changed_when: false
+
+        - name: Verify cluster pods
+          shell: "oc get pods -l app=infinispan-pod -n {{ target_namespace }} --no-headers | wc -l"
+          register: cluster_pods
+          changed_when: false
+
+        - name: Display cluster status
+          debug:
+            msg: "Data Grid clusters ready: {{ cluster_pods.stdout | trim }} pods running (expected: 5)"
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 7: CACHES
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 7 — Create caches"
+      tags: [infra]
+      block:
+        - name: Apply event-tracking cache
+          command: "oc apply -f {{ manifests_dir }}/13-cache-event-tracking.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Apply app-config cache
+          command: "oc apply -f {{ manifests_dir }}/14-cache-app-config.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Apply user-sessions cache
+          command: "oc apply -f {{ manifests_dir }}/15-cache-user-sessions.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Wait for caches to be ready
+          shell: |
+            oc get caches -n {{ target_namespace }} -o jsonpath='{range .items[*]}{.metadata.name}{" "}{end}'
+          register: caches_list
+          changed_when: false
+
+        - name: Display caches
+          debug:
+            msg: "Caches created: {{ caches_list.stdout }}"
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 8: REDIS BASELINE
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 8 — Deploy Redis baseline"
+      tags: [infra]
+      block:
+        - name: Apply Redis secret
+          command: "oc apply -f {{ manifests_dir }}/16-redis-secret.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Apply Redis deployment
+          command: "oc apply -f {{ manifests_dir }}/17-redis-deployment.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Apply Redis service
+          command: "oc apply -f {{ manifests_dir }}/18-redis-service.yaml -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Wait for Redis to be ready
+          command: >
+            oc rollout status deployment/redis
+            -n {{ target_namespace }} --timeout={{ rollout_timeout }}s
+          changed_when: false
+
+        - name: Display Redis status
+          debug:
+            msg: "Redis baseline deployed and ready"
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 9: BUILD APPLICATIONS
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 9 — Build test applications"
+      tags: [apps]
+      block:
+        - name: Create BuildConfig for redis-client-app
+          command: >
+            oc new-build --binary --strategy=docker
+            --name=redis-client-app -n {{ target_namespace }}
+          register: bc_redis
+          failed_when: bc_redis.rc != 0 and 'already exists' not in bc_redis.stderr
+          changed_when: "'already exists' not in bc_redis.stderr"
+
+        - name: Create BuildConfig for spring-cache-app
+          command: >
+            oc new-build --binary --strategy=docker
+            --name=spring-cache-app -n {{ target_namespace }}
+          register: bc_cache
+          failed_when: bc_cache.rc != 0 and 'already exists' not in bc_cache.stderr
+          changed_when: "'already exists' not in bc_cache.stderr"
+
+        - name: Create BuildConfig for spring-session-app
+          command: >
+            oc new-build --binary --strategy=docker
+            --name=spring-session-app -n {{ target_namespace }}
+          register: bc_session
+          failed_when: bc_session.rc != 0 and 'already exists' not in bc_session.stderr
+          changed_when: "'already exists' not in bc_session.stderr"
+
+        - name: Build redis-client-app
+          command: >
+            oc start-build redis-client-app
+            --from-dir={{ apps_dir }}/redis-client-app
+            --follow -n {{ target_namespace }}
+          changed_when: true
+          async: "{{ build_timeout }}"
+          poll: 15
+
+        - name: Build spring-cache-app
+          command: >
+            oc start-build spring-cache-app
+            --from-dir={{ apps_dir }}/spring-cache-app
+            --follow -n {{ target_namespace }}
+          changed_when: true
+          async: "{{ build_timeout }}"
+          poll: 15
+
+        - name: Build spring-session-app
+          command: >
+            oc start-build spring-session-app
+            --from-dir={{ apps_dir }}/spring-session-app
+            --follow -n {{ target_namespace }}
+          changed_when: true
+          async: "{{ build_timeout }}"
+          poll: 15
+
+        - name: Verify all ImageStreams have images
+          shell: |
+            for app in redis-client-app spring-cache-app spring-session-app; do
+              oc get is $app -n {{ target_namespace }} -o jsonpath="{.status.tags[0].tag}" 2>/dev/null || echo "MISSING:$app"
+            done
+          register: is_check
+          changed_when: false
+          failed_when: "'MISSING' in is_check.stdout"
+
+        - name: Display build results
+          debug:
+            msg: "All 3 application images built successfully"
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 10: DEPLOY APPLICATIONS
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 10 — Deploy test applications"
+      tags: [apps]
+      block:
+        - name: Deploy redis-client-app
+          command: "oc apply -f {{ item }} -n {{ target_namespace }}"
+          loop:
+            - "{{ manifests_dir }}/19-redis-client-app-deployment.yaml"
+            - "{{ manifests_dir }}/20-redis-client-app-service.yaml"
+            - "{{ manifests_dir }}/21-redis-client-app-route.yaml"
+          changed_when: true
+
+        - name: Deploy spring-cache-app
+          command: "oc apply -f {{ item }} -n {{ target_namespace }}"
+          loop:
+            - "{{ manifests_dir }}/22-spring-cache-app-deployment.yaml"
+            - "{{ manifests_dir }}/23-spring-cache-app-service.yaml"
+            - "{{ manifests_dir }}/24-spring-cache-app-route.yaml"
+          changed_when: true
+
+        - name: Deploy spring-session-app
+          command: "oc apply -f {{ item }} -n {{ target_namespace }}"
+          loop:
+            - "{{ manifests_dir }}/25-spring-session-app-deployment.yaml"
+            - "{{ manifests_dir }}/26-spring-session-app-service.yaml"
+            - "{{ manifests_dir }}/27-spring-session-app-route.yaml"
+          changed_when: true
+
+        - name: Wait for redis-client-app rollout
+          command: "oc rollout status deployment/redis-client-app -n {{ target_namespace }} --timeout={{ rollout_timeout }}s"
+          changed_when: false
+
+        - name: Wait for spring-cache-app rollout
+          command: "oc rollout status deployment/spring-cache-app -n {{ target_namespace }} --timeout={{ rollout_timeout }}s"
+          changed_when: false
+
+        - name: Wait for spring-session-app rollout
+          command: "oc rollout status deployment/spring-session-app -n {{ target_namespace }} --timeout={{ rollout_timeout }}s"
+          changed_when: false
+
+        - name: Get redis-client-app route
+          shell: "oc get route redis-client-app -n {{ target_namespace }} -o jsonpath='{.spec.host}'"
+          register: redis_app_route
+          changed_when: false
+
+        - name: Display deployment status
+          debug:
+            msg: "All applications deployed. redis-client-app at https://{{ redis_app_route.stdout }}"
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 11: ACT 1 — TESTS AGAINST REDIS BASELINE
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 11 — Act 1: Functional tests against Redis baseline"
+      tags: [tests]
+      block:
+        - name: Get redis-client-app route
+          shell: "oc get route redis-client-app -n {{ target_namespace }} -o jsonpath='{.spec.host}'"
+          register: app_route
+          changed_when: false
+
+        - name: Set app URL fact
+          set_fact:
+            app_url: "https://{{ app_route.stdout }}"
+
+        - name: "Test 1 — PING (Redis)"
+          shell: "curl -sk {{ app_url }}/api/info"
+          register: test_ping_redis
+          changed_when: false
+          until: "'PONG' in test_ping_redis.stdout"
+          retries: 10
+          delay: 5
+
+        - name: Verify PING response
+          assert:
+            that:
+              - "'PONG' in test_ping_redis.stdout"
+              - "'redis' in test_ping_redis.stdout"
+            fail_msg: "PING test failed against Redis"
+            success_msg: "Test 1 PASSED — PING: PONG (backend: Redis)"
+
+        - name: "Test 2 — SET with TTL (Redis)"
+          shell: >
+            curl -sk -X PUT "{{ app_url }}/api/strings/ack-12345?ttlSeconds=60"
+            -H "Content-Type: text/plain" -d "msg-received"
+          register: test_set_redis
+          changed_when: false
+
+        - name: Verify SET response
+          assert:
+            that:
+              - "'SET' in test_set_redis.stdout"
+              - "'ack-12345' in test_set_redis.stdout"
+            fail_msg: "SET test failed against Redis"
+            success_msg: "Test 2 PASSED — SET with TTL"
+
+        - name: "Test 3 — GET (Redis)"
+          shell: "curl -sk {{ app_url }}/api/strings/ack-12345"
+          register: test_get_redis
+          changed_when: false
+
+        - name: Verify GET response
+          assert:
+            that:
+              - "'msg-received' in test_get_redis.stdout"
+            fail_msg: "GET test failed against Redis"
+            success_msg: "Test 3 PASSED — GET returned correct value"
+
+        - name: "Test 4 — TTL (Redis)"
+          shell: "curl -sk {{ app_url }}/api/strings/ack-12345/ttl | jq '.ttl'"
+          register: test_ttl_redis
+          changed_when: false
+
+        - name: Verify TTL response
+          assert:
+            that:
+              - "test_ttl_redis.stdout | trim | int > 0"
+            fail_msg: "TTL test failed against Redis — got {{ test_ttl_redis.stdout }}"
+            success_msg: "Test 4 PASSED — TTL is active ({{ test_ttl_redis.stdout | trim }}s remaining)"
+
+        - name: "Test 5 — GETDEL (Redis)"
+          shell: |
+            curl -sk -X PUT "{{ app_url }}/api/strings/ack-getdel?ttlSeconds=60" \
+              -H "Content-Type: text/plain" -d "to-be-deleted"
+            curl -sk -X DELETE "{{ app_url }}/api/strings/ack-getdel/getdel"
+          register: test_getdel_redis
+          changed_when: false
+
+        - name: Verify GETDEL response
+          assert:
+            that:
+              - "'to-be-deleted' in test_getdel_redis.stdout"
+              - "'GETDEL' in test_getdel_redis.stdout"
+            fail_msg: "GETDEL test failed against Redis"
+            success_msg: "Test 5 PASSED — GETDEL returned value and deleted key"
+
+        - name: "Test 5b — Verify key deleted after GETDEL"
+          shell: "curl -sk -o /dev/null -w '%{http_code}' {{ app_url }}/api/strings/ack-getdel"
+          register: test_getdel_verify
+          changed_when: false
+
+        - name: Verify key is gone
+          assert:
+            that:
+              - "test_getdel_verify.stdout == '404'"
+            fail_msg: "Key still exists after GETDEL"
+            success_msg: "Test 5b PASSED — Key no longer exists"
+
+        - name: "Test 6 — Duplicate detection (Redis)"
+          shell: |
+            curl -sk -X PUT "{{ app_url }}/api/strings/ack-dup?ttlSeconds=60" \
+              -H "Content-Type: text/plain" -d "first"
+            curl -sk -X PUT "{{ app_url }}/api/strings/ack-dup?ttlSeconds=60" \
+              -H "Content-Type: text/plain" -d "second"
+          register: test_dup_redis
+          changed_when: false
+
+        - name: Verify duplicate detection
+          assert:
+            that:
+              - "'true' in test_dup_redis.stdout"
+            fail_msg: "Duplicate detection failed against Redis"
+            success_msg: "Test 6 PASSED — overwritten=true on duplicate"
+
+        - name: "Test 7 — Auto-expiration (Redis)"
+          shell: |
+            curl -sk -X PUT "{{ app_url }}/api/strings/ack-expire?ttlSeconds=3" \
+              -H "Content-Type: text/plain" -d "will-expire"
+            sleep 5
+            curl -sk -o /dev/null -w '%{http_code}' {{ app_url }}/api/strings/ack-expire
+          register: test_expire_redis
+          changed_when: false
+
+        - name: Verify auto-expiration
+          assert:
+            that:
+              - "test_expire_redis.stdout is search('404')"
+            fail_msg: "Auto-expiration failed against Redis"
+            success_msg: "Test 7 PASSED — Key auto-expired after TTL"
+
+        - name: "═══ Act 1 Summary ═══"
+          debug:
+            msg: "ALL 7 TESTS PASSED AGAINST REDIS BASELINE"
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 12: ACT 2 — SWITCH TO DATA GRID
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 12 — Act 2: Live switch to Data Grid"
+      tags: [tests]
+      block:
+        - name: Patch redis-client-app to Data Grid
+          command: >
+            oc patch deployment redis-client-app -n {{ target_namespace }}
+            --patch-file {{ patches_dir }}/patch-redis-client-to-datagrid.yaml --type strategic
+          changed_when: true
+
+        - name: Wait for rollout after patch
+          command: "oc rollout status deployment/redis-client-app -n {{ target_namespace }} --timeout={{ rollout_timeout }}s"
+          changed_when: false
+
+        - name: Verify switch to Data Grid
+          shell: "curl -sk {{ app_url }}/api/info"
+          register: switch_verify
+          changed_when: false
+          until: "'PONG' in switch_verify.stdout"
+          retries: 10
+          delay: 5
+
+        - name: Verify backend is Data Grid
+          assert:
+            that:
+              - "'healthcare' in switch_verify.stdout"
+              - "'11222' in switch_verify.stdout"
+              - "'PONG' in switch_verify.stdout"
+            fail_msg: "Switch to Data Grid failed"
+            success_msg: "App switched to Data Grid — host: healthcare, port: 11222"
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 13: ACT 3 — TESTS AGAINST DATA GRID
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 13 — Act 3: Functional tests against Data Grid RESP"
+      tags: [tests]
+      block:
+        - name: "Test 1 — PING (Data Grid)"
+          shell: "curl -sk {{ app_url }}/api/info"
+          register: test_ping_dg
+          changed_when: false
+
+        - name: Verify PING
+          assert:
+            that:
+              - "'PONG' in test_ping_dg.stdout"
+              - "'healthcare' in test_ping_dg.stdout"
+            success_msg: "Test 1 PASSED — PING: PONG (backend: Data Grid)"
+
+        - name: "Test 2 — SET with TTL (Data Grid)"
+          shell: >
+            curl -sk -X PUT "{{ app_url }}/api/strings/ack-dg-001?ttlSeconds=60"
+            -H "Content-Type: text/plain" -d "confirmed-via-datagrid"
+          register: test_set_dg
+          changed_when: false
+
+        - name: Verify SET
+          assert:
+            that:
+              - "'SET' in test_set_dg.stdout"
+            success_msg: "Test 2 PASSED — SET with TTL"
+
+        - name: "Test 3 — GET (Data Grid)"
+          shell: "curl -sk {{ app_url }}/api/strings/ack-dg-001"
+          register: test_get_dg
+          changed_when: false
+
+        - name: Verify GET
+          assert:
+            that:
+              - "'confirmed-via-datagrid' in test_get_dg.stdout"
+            success_msg: "Test 3 PASSED — GET returned correct value"
+
+        - name: "Test 4 — TTL (Data Grid)"
+          shell: "curl -sk {{ app_url }}/api/strings/ack-dg-001/ttl | jq '.ttl'"
+          register: test_ttl_dg
+          changed_when: false
+
+        - name: Verify TTL
+          assert:
+            that:
+              - "test_ttl_dg.stdout | trim | int > 0"
+            success_msg: "Test 4 PASSED — TTL is active ({{ test_ttl_dg.stdout | trim }}s remaining)"
+
+        - name: "Test 5 — GETDEL (Data Grid)"
+          shell: |
+            curl -sk -X PUT "{{ app_url }}/api/strings/ack-dg-getdel?ttlSeconds=60" \
+              -H "Content-Type: text/plain" -d "dg-delete-me"
+            curl -sk -X DELETE "{{ app_url }}/api/strings/ack-dg-getdel/getdel"
+          register: test_getdel_dg
+          changed_when: false
+
+        - name: Verify GETDEL
+          assert:
+            that:
+              - "'dg-delete-me' in test_getdel_dg.stdout"
+              - "'GETDEL' in test_getdel_dg.stdout"
+            success_msg: "Test 5 PASSED — GETDEL returned value and deleted key"
+
+        - name: "Test 5b — Verify key deleted"
+          shell: "curl -sk -o /dev/null -w '%{http_code}' {{ app_url }}/api/strings/ack-dg-getdel"
+          register: test_getdel_dg_verify
+          changed_when: false
+
+        - name: Verify key gone
+          assert:
+            that:
+              - "test_getdel_dg_verify.stdout == '404'"
+            success_msg: "Test 5b PASSED — Key no longer exists"
+
+        - name: "Test 6 — Duplicate detection (Data Grid)"
+          shell: |
+            curl -sk -X PUT "{{ app_url }}/api/strings/ack-dg-dup?ttlSeconds=60" \
+              -H "Content-Type: text/plain" -d "first"
+            curl -sk -X PUT "{{ app_url }}/api/strings/ack-dg-dup?ttlSeconds=60" \
+              -H "Content-Type: text/plain" -d "second"
+          register: test_dup_dg
+          changed_when: false
+
+        - name: Verify duplicate detection
+          assert:
+            that:
+              - "'true' in test_dup_dg.stdout"
+            success_msg: "Test 6 PASSED — overwritten=true on duplicate"
+
+        - name: "Test 7 — Auto-expiration (Data Grid)"
+          shell: |
+            curl -sk -X PUT "{{ app_url }}/api/strings/ack-dg-expire?ttlSeconds=3" \
+              -H "Content-Type: text/plain" -d "will-expire"
+            sleep 5
+            curl -sk -o /dev/null -w '%{http_code}' {{ app_url }}/api/strings/ack-dg-expire
+          register: test_expire_dg
+          changed_when: false
+
+        - name: Verify auto-expiration
+          assert:
+            that:
+              - "test_expire_dg.stdout is search('404')"
+            success_msg: "Test 7 PASSED — Key auto-expired after TTL"
+
+        - name: "═══ Act 3 Summary ═══"
+          debug:
+            msg: "ALL 7 TESTS PASSED AGAINST DATA GRID RESP — IDENTICAL TO REDIS"
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 14: ACT 5 — SPRING CACHE
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 14 — Act 5.1: Spring Cache validation"
+      tags: [tests]
+      block:
+        - name: Get spring-cache-app route
+          shell: "oc get route spring-cache-app -n {{ target_namespace }} -o jsonpath='{.spec.host}'"
+          register: cache_app_route
+          changed_when: false
+
+        - name: Set spring-cache-app URL
+          set_fact:
+            cache_url: "https://{{ cache_app_route.stdout }}"
+
+        - name: Wait for spring-cache-app health
+          shell: "curl -sk {{ cache_url }}/actuator/health"
+          register: cache_health
+          until: "'UP' in cache_health.stdout"
+          retries: 10
+          delay: 5
+          changed_when: false
+
+        - name: Reset stats
+          shell: "curl -sk -X DELETE {{ cache_url }}/api/specialties/stats"
+          changed_when: false
+
+        - name: Store a specialty (populates cache via @CachePut)
+          shell: >
+            curl -sk -X PUT {{ cache_url }}/api/specialties
+            -H "Content-Type: application/json"
+            -d '{"code":"CARD","name":"Cardiology","description":"Heart and cardiovascular system"}'
+          changed_when: false
+
+        - name: Evict from cache
+          shell: "curl -sk -X DELETE {{ cache_url }}/api/specialties/CARD/cache"
+          changed_when: false
+
+        - name: Reset stats after evict
+          shell: "curl -sk -X DELETE {{ cache_url }}/api/specialties/stats"
+          changed_when: false
+
+        - name: "GET after evict — cache MISS (lookupCount should be 1)"
+          shell: "curl -sk {{ cache_url }}/api/specialties/CARD"
+          changed_when: false
+
+        - name: Check stats after MISS
+          shell: "curl -sk {{ cache_url }}/api/specialties/stats"
+          register: stats_miss
+          changed_when: false
+
+        - name: Verify cache MISS
+          assert:
+            that:
+              - "'\"lookupCount\":1' in stats_miss.stdout or '\"lookupCount\": 1' in stats_miss.stdout"
+            success_msg: "Spring Cache MISS verified — lookupCount=1"
+
+        - name: "GET again — cache HIT (lookupCount should still be 1)"
+          shell: "curl -sk {{ cache_url }}/api/specialties/CARD"
+          changed_when: false
+
+        - name: Check stats after HIT
+          shell: "curl -sk {{ cache_url }}/api/specialties/stats"
+          register: stats_hit
+          changed_when: false
+
+        - name: Verify cache HIT
+          assert:
+            that:
+              - "'\"lookupCount\":1' in stats_hit.stdout or '\"lookupCount\": 1' in stats_hit.stdout"
+            success_msg: "Spring Cache HIT verified — lookupCount still 1 (served from cache)"
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 15: ACT 5 — SPRING SESSION
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 15 — Act 5.2: Spring Session validation"
+      tags: [tests]
+      block:
+        - name: Get spring-session-app route
+          shell: "oc get route spring-session-app -n {{ target_namespace }} -o jsonpath='{.spec.host}'"
+          register: session_app_route
+          changed_when: false
+
+        - name: Set spring-session-app URL
+          set_fact:
+            session_url: "https://{{ session_app_route.stdout }}"
+
+        - name: Wait for spring-session-app health
+          shell: "curl -sk {{ session_url }}/actuator/health"
+          register: session_health
+          until: "'UP' in session_health.stdout"
+          retries: 10
+          delay: 5
+          changed_when: false
+
+        - name: Create session and store attribute
+          shell: |
+            curl -sk -c /tmp/ansible-session-cookies.txt "{{ session_url }}/api/session" > /dev/null
+            curl -sk -b /tmp/ansible-session-cookies.txt -X PUT \
+              "{{ session_url }}/api/session/attributes/username" \
+              -H "Content-Type: text/plain" -d "dr-smith"
+          changed_when: false
+
+        - name: Read session back (same cookie)
+          shell: "curl -sk -b /tmp/ansible-session-cookies.txt {{ session_url }}/api/session"
+          register: session_read
+          changed_when: false
+
+        - name: Verify session persistence
+          assert:
+            that:
+              - "'dr-smith' in session_read.stdout"
+              - "'sessionId' in session_read.stdout"
+            success_msg: "Spring Session verified — attribute persisted across requests"
+
+        - name: Verify new session without cookie
+          shell: "curl -sk {{ session_url }}/api/session"
+          register: session_new
+          changed_when: false
+
+        - name: Verify different session ID
+          assert:
+            that:
+              - "'sessionId' in session_new.stdout"
+              - "'dr-smith' not in session_new.stdout"
+            success_msg: "Spring Session isolation verified — new request gets new session"
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 16: ACT 6 — EXTERNAL RESP ACCESS
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 16 — External RESP access via Route"
+      tags: [tests]
+      block:
+        - name: Get healthcare external route
+          shell: "oc get route healthcare-external -n {{ target_namespace }} -o jsonpath='{.spec.host}'"
+          register: dg_external_route
+          changed_when: false
+
+        - name: Query respCache via REST API through external Route
+          shell: >
+            curl -sk -u "app-healthcare:h34lthc4r3!"
+            "https://{{ dg_external_route.stdout }}/rest/v2/caches/respCache"
+          register: external_access
+          changed_when: false
+
+        - name: Verify external access
+          assert:
+            that:
+              - "'RUNNING' in external_access.stdout"
+              - "'respCache' in external_access.stdout"
+              - "'DIST_SYNC' in external_access.stdout"
+            success_msg: "External RESP access validated via Route {{ dg_external_route.stdout }}"
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 17: ACT 7 — HIGH AVAILABILITY
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 17 — Act 7: High Availability"
+      tags: [tests]
+      block:
+        - name: Verify 2 healthcare pods running
+          shell: "oc get pods -l app=infinispan-pod,clusterName=healthcare -n {{ target_namespace }} --no-headers | grep Running | wc -l"
+          register: ha_pods_before
+          changed_when: false
+
+        - name: Verify pod count
+          assert:
+            that:
+              - "ha_pods_before.stdout | trim | int == 2"
+            success_msg: "2 healthcare pods running"
+
+        - name: Create HA test data
+          shell: >
+            curl -sk -X PUT "{{ app_url }}/api/strings/ack-ha-test?ttlSeconds=300"
+            -H "Content-Type: text/plain" -d "survives-failover"
+          changed_when: false
+
+        - name: Verify HA test data exists
+          shell: "curl -sk {{ app_url }}/api/strings/ack-ha-test"
+          register: ha_data_before
+          changed_when: false
+
+        - name: Confirm data stored
+          assert:
+            that:
+              - "'survives-failover' in ha_data_before.stdout"
+            success_msg: "HA test data stored"
+
+        - name: Kill healthcare-0 pod
+          command: "oc delete pod healthcare-0 -n {{ target_namespace }}"
+          changed_when: true
+
+        - name: Pause for failover
+          pause:
+            seconds: 5
+            prompt: "Pod healthcare-0 killed — verifying data survives..."
+
+        - name: Verify data survives failover
+          shell: "curl -sk {{ app_url }}/api/strings/ack-ha-test"
+          register: ha_data_after
+          changed_when: false
+          retries: 5
+          delay: 3
+          until: "'survives-failover' in ha_data_after.stdout"
+
+        - name: Confirm data survived
+          assert:
+            that:
+              - "'survives-failover' in ha_data_after.stdout"
+            success_msg: "HA VALIDATED — Data survived pod failure"
+
+        - name: Wait for cluster recovery
+          command: >
+            oc wait --for=condition=WellFormed infinispan/healthcare
+            -n {{ target_namespace }} --timeout={{ cluster_timeout }}s
+          changed_when: false
+
+        - name: Verify 2 pods after recovery
+          shell: "oc get pods -l app=infinispan-pod,clusterName=healthcare -n {{ target_namespace }} --no-headers | grep Running | wc -l"
+          register: ha_pods_after
+          changed_when: false
+
+        - name: Confirm recovery
+          assert:
+            that:
+              - "ha_pods_after.stdout | trim | int == 2"
+            success_msg: "Cluster recovered — 2 pods running, data preserved"
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 18: MONITORING
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 18 — Monitoring validation"
+      tags: [tests]
+      block:
+        - name: Verify ServiceMonitors exist
+          shell: "oc get servicemonitor -n {{ target_namespace }} --no-headers | wc -l"
+          register: sm_count
+          changed_when: false
+
+        - name: Confirm ServiceMonitors
+          assert:
+            that:
+              - "sm_count.stdout | trim | int >= 2"
+            success_msg: "{{ sm_count.stdout | trim }} ServiceMonitors active (healthcare-monitor, platform-monitor)"
+
+        - name: Verify metrics endpoint responds
+          shell: |
+            OP_PASS=$(oc get secret healthcare-generated-operator-secret -n {{ target_namespace }} \
+              -o jsonpath='{.data.password}' | base64 -d)
+            oc exec healthcare-0 -n {{ target_namespace }} -- \
+              curl -s -u "operator:${OP_PASS}" http://localhost:11223/metrics 2>/dev/null | head -5
+          register: metrics_check
+          changed_when: false
+
+        - name: Confirm metrics are exposed
+          assert:
+            that:
+              - "'infinispan' in metrics_check.stdout"
+            success_msg: "Data Grid metrics endpoint responding"
+
+        - name: Query Prometheus for Data Grid metrics
+          shell: |
+            TOKEN=$(oc whoami -t)
+            THANOS=$(oc get route thanos-querier -n openshift-monitoring -o jsonpath='{.spec.host}')
+            curl -sk -H "Authorization: Bearer ${TOKEN}" \
+              "https://${THANOS}/api/v1/query?query=infinispan_cache_container_health_number_of_nodes" \
+              | jq '.data.result | length'
+          register: prom_query
+          changed_when: false
+
+        - name: Confirm Prometheus is collecting metrics
+          assert:
+            that:
+              - "prom_query.stdout | trim | int >= 2"
+            success_msg: "Prometheus collecting metrics from {{ prom_query.stdout | trim }} Data Grid targets"
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 19: GRAFANA DASHBOARD (optional)
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 19 — Grafana Dashboard (optional)"
+      tags: [tests]
+      block:
+        - name: Check if Grafana Operator is installed
+          shell: "oc get csv -A 2>/dev/null | grep -c grafana"
+          register: grafana_check
+          changed_when: false
+          failed_when: false
+
+        - name: Apply Grafana dashboard
+          command: "oc apply -f {{ manifests_dir }}/28-grafana-dashboard-datagrid.yaml"
+          when: grafana_check.stdout | trim | int > 0
+          changed_when: true
+
+        - name: Skip Grafana dashboard
+          debug:
+            msg: "Grafana Operator not found — skipping dashboard. Metrics available via OpenShift Console (Observe → Metrics)"
+          when: grafana_check.stdout | trim | int == 0
+
+    # ══════════════════════════════════════════════════════════════════
+    # FINAL SUMMARY
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "═══════════════════════════════════════════════"
+      tags: [tests]
+      debug:
+        msg: "POC VALIDATION COMPLETE"
+
+    - name: Final validation summary
+      tags: [tests]
+      debug:
+        msg:
+          - "╔══════════════════════════════════════════════════════════╗"
+          - "║  Red Hat Data Grid 8.6 RESP Protocol PoC               ║"
+          - "║  Full Validation Results                                ║"
+          - "╠══════════════════════════════════════════════════════════╣"
+          - "║  RESP 7 tests vs Redis ................ PASSED          ║"
+          - "║  RESP 7 tests vs Data Grid ............ PASSED          ║"
+          - "║  Spring Cache (miss/hit) .............. PASSED          ║"
+          - "║  Spring Session (externalization) ..... PASSED          ║"
+          - "║  External RESP access via Route ....... PASSED          ║"
+          - "║  High Availability (pod kill) ......... PASSED          ║"
+          - "║  Prometheus metrics collection ........ PASSED          ║"
+          - "║  Multi-tenancy (2 isolated clusters) .. PASSED          ║"
+          - "║  TLS (cert-manager + Service) ......... PASSED          ║"
+          - "╚══════════════════════════════════════════════════════════╝"

@@ -1,0 +1,35 @@
+apiVersion: infinispan.org/v1
+kind: Infinispan
+metadata:
+  name: platform
+  namespace: rhdg-poc-test
+  annotations:
+    infinispan.org/monitoring: "true"
+spec:
+  replicas: 3
+  version: 8.6.0-1
+  configMapName: platform-server-config
+  service:
+    type: DataGrid
+    container:
+      storage: 1Gi
+      ephemeralStorage: false
+  container:
+    cpu: "1000m"
+    memory: "2Gi"
+  security:
+    endpointSecretName: platform-credentials
+    endpointEncryption:
+      type: Service
+  scheduling:
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  infinispan_cr: platform
+              topologyKey: kubernetes.io/hostname
+  expose:
+    type: Route

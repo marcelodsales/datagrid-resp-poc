@@ -1,0 +1,3 @@
+metadata:
+  annotations:
+    haproxy.ingress.kubernetes.io/timeout: 300s

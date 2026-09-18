@@ -1,0 +1,23 @@
+apiVersion: infinispan.org/v2alpha1
+kind: Cache
+metadata:
+  name: event-tracking
+  namespace: rhdg-poc-test
+spec:
+  clusterName: healthcare
+  name: event-tracking
+  template: |-
+    distributedCache:
+      mode: "ASYNC"
+      owners: "2"
+      statistics: "true"
+      encoding:
+        mediaType: "application/x-protostream"
+      expiration:
+        lifespan: "300000"
+      partitionHandling:
+        whenSplit: "ALLOW_READ_WRITES"
+        mergePolicy: "PREFERRED_NON_NULL"
+      memory:
+        maxCount: "100000"
+        whenFull: "REMOVE"

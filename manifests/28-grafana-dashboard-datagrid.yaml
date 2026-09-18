@@ -1,0 +1,821 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: datagrid-metrics
+  namespace: shared-monitoring
+spec:
+  allowCrossNamespaceImport: false
+  instanceSelector:
+    matchLabels:
+      dashboards: grafana
+  json: |
+    {
+      "id": null,
+      "uid": "rhdg-poc-test",
+      "title": "Red Hat Data Grid 8.6: Cache as a Service PoC",
+      "description": "Multi-tenant cache clusters on OpenShift: healthcare (2 nodes) + platform (3 nodes), 4 caches across 3 consumption models (RESP, Spring Cache, Spring Session)",
+      "editable": true,
+      "style": "dark",
+      "timezone": "browser",
+      "time": { "from": "now-1h", "to": "now" },
+      "refresh": "30s",
+      "tags": ["data-grid", "cache-as-a-service", "infinispan", "poc"],
+      "annotations": {
+        "list": [
+          {
+            "name": "Deployments",
+            "datasource": "-- Grafana --",
+            "enable": false,
+            "iconColor": "rgba(255, 96, 96, 1)",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "cluster",
+            "label": "Cluster",
+            "type": "query",
+            "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+            "query": "label_values(infinispan_cluster_size{namespace=\"rhdg-poc-test\"}, job)",
+            "definition": "label_values(infinispan_cluster_size{namespace=\"rhdg-poc-test\"}, job)",
+            "regex": "",
+            "refresh": 2,
+            "includeAll": true,
+            "multi": true,
+            "current": { "text": "All", "value": "$__all" },
+            "sort": 1
+          },
+          {
+            "name": "cache",
+            "label": "Cache",
+            "type": "query",
+            "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+            "query": "label_values(infinispan_statistics_hits{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}, cache)",
+            "definition": "label_values(infinispan_statistics_hits{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}, cache)",
+            "refresh": 2,
+            "includeAll": true,
+            "multi": true,
+            "current": { "text": "All", "value": "$__all" },
+            "sort": 1
+          }
+        ]
+      },
+      "panels": [
+
+        {
+          "id": 100,
+          "title": "",
+          "type": "text",
+          "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+          "options": {
+            "mode": "markdown",
+            "content": "# Cache as a Service: Operational Dashboard\n**Clusters**: `healthcare` (RESP, Spring Cache) · `platform` (Spring Session)  |  **Protocol**: Hot Rod 11222, RESP 11222, REST 11222, Admin 11223  |  **Operator**: Data Grid 8.6  |  **Namespace**: `rhdg-poc-test`"
+          },
+          "transparent": true
+        },
+
+        {
+          "id": 1,
+          "title": "🟢 CLUSTER HEALTH",
+          "type": "row",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 3 },
+          "collapsed": false
+        },
+        {
+          "id": 10,
+          "title": "Total Nodes",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 4, "x": 0, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "sum(max(infinispan_cluster_size{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}) by (job))",
+              "legendFormat": "nodes",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": { "mode": "thresholds" },
+              "thresholds": { "steps": [
+                { "color": "red", "value": null },
+                { "color": "green", "value": 4 }
+              ]}
+            }
+          },
+          "options": { "colorMode": "background", "graphMode": "none", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+        },
+        {
+          "id": 11,
+          "title": "healthcare",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 4, "x": 4, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "max(infinispan_cluster_size{namespace=\"rhdg-poc-test\", job=\"healthcare-admin\"})",
+              "legendFormat": "nodes",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "mappings": [{ "type": "value", "options": { "0": { "text": "0/2 DOWN", "color": "red" }, "1": { "text": "1/2 DEGRADED", "color": "orange" }, "2": { "text": "2/2 HEALTHY", "color": "green" } } }],
+              "color": { "mode": "thresholds" },
+              "thresholds": { "steps": [
+                { "color": "red", "value": null },
+                { "color": "orange", "value": 1 },
+                { "color": "green", "value": 2 }
+              ]}
+            }
+          },
+          "options": { "colorMode": "background", "graphMode": "none", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+        },
+        {
+          "id": 12,
+          "title": "platform",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 4, "x": 8, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "max(infinispan_cluster_size{namespace=\"rhdg-poc-test\", job=\"platform-admin\"})",
+              "legendFormat": "nodes",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "mappings": [{ "type": "value", "options": { "0": { "text": "0/3 DOWN", "color": "red" }, "1": { "text": "1/3 DEGRADED", "color": "red" }, "2": { "text": "2/3 DEGRADED", "color": "orange" }, "3": { "text": "3/3 HEALTHY", "color": "green" } } }],
+              "color": { "mode": "thresholds" },
+              "thresholds": { "steps": [
+                { "color": "red", "value": null },
+                { "color": "orange", "value": 2 },
+                { "color": "green", "value": 3 }
+              ]}
+            }
+          },
+          "options": { "colorMode": "background", "graphMode": "none", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+        },
+        {
+          "id": 13,
+          "title": "Running Caches",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 4, "x": 12, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "sum(max(infinispan_number_of_running_caches{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}) by (job))",
+              "legendFormat": "caches",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": { "fixedColor": "blue", "mode": "fixed" }
+            }
+          },
+          "options": { "colorMode": "background", "graphMode": "none", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+        },
+        {
+          "id": 14,
+          "title": "Replication Success",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 4, "x": 16, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "avg(infinispan_rpc_manager_success_ratio_floating_point{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}) * 100",
+              "legendFormat": "",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent", "decimals": 1,
+              "color": { "mode": "thresholds" },
+              "thresholds": { "steps": [
+                { "color": "red", "value": null },
+                { "color": "orange", "value": 95 },
+                { "color": "green", "value": 99 }
+              ]}
+            }
+          },
+          "options": { "colorMode": "background", "graphMode": "area", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+        },
+        {
+          "id": 15,
+          "title": "Active Client Connections",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 4, "x": 20, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "sum(infinispan_server_single_port_11222_transport_number_of_local_connections{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"})",
+              "legendFormat": "connections",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": { "fixedColor": "purple", "mode": "fixed" }
+            }
+          },
+          "options": { "colorMode": "background", "graphMode": "area", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+        },
+
+        {
+          "id": 16,
+          "title": "JVM Heap Usage (%)",
+          "type": "gauge",
+          "gridPos": { "h": 5, "w": 12, "x": 0, "y": 8 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "infinispan_local_container_stats_memory_used{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"} / on(pod, job, namespace) infinispan_local_container_stats_memory_max{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"} * 100",
+              "legendFormat": "{{ pod }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent", "min": 0, "max": 100, "decimals": 0,
+              "color": { "mode": "thresholds" },
+              "thresholds": { "steps": [
+                { "color": "green", "value": null },
+                { "color": "#EAB839", "value": 60 },
+                { "color": "orange", "value": 75 },
+                { "color": "red", "value": 90 }
+              ]}
+            }
+          },
+          "options": { "showThresholdLabels": false, "showThresholdMarkers": true }
+        },
+        {
+          "id": 17,
+          "title": "Cluster Size Over Time",
+          "type": "timeseries",
+          "gridPos": { "h": 5, "w": 12, "x": 12, "y": 8 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "max(infinispan_cluster_size{namespace=\"rhdg-poc-test\", job=\"healthcare-admin\"})",
+              "legendFormat": "healthcare",
+              "refId": "A"
+            },
+            {
+              "expr": "max(infinispan_cluster_size{namespace=\"rhdg-poc-test\", job=\"platform-admin\"})",
+              "legendFormat": "platform",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short", "decimals": 0, "min": 0,
+              "custom": { "fillOpacity": 20, "lineWidth": 2, "pointSize": 5, "showPoints": "auto", "stacking": { "mode": "none" }, "lineInterpolation": "stepAfter" },
+              "color": { "mode": "palette-classic" }
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min"] } }
+        },
+
+        {
+          "id": 2,
+          "title": "📊 CACHE PERFORMANCE",
+          "type": "row",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+          "collapsed": false
+        },
+        {
+          "id": 20,
+          "title": "Hit Ratio by Cache",
+          "type": "bargauge",
+          "gridPos": { "h": 7, "w": 8, "x": 0, "y": 14 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "max(infinispan_statistics_hit_ratio{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache, job)",
+              "legendFormat": "{{ cache }} ({{ job }})",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit", "min": 0, "max": 1, "decimals": 1,
+              "color": { "mode": "thresholds" },
+              "thresholds": { "steps": [
+                { "color": "red", "value": null },
+                { "color": "orange", "value": 0.5 },
+                { "color": "yellow", "value": 0.7 },
+                { "color": "green", "value": 0.85 }
+              ]}
+            }
+          },
+          "options": { "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true, "reduceOptions": { "calcs": ["lastNotNull"] } }
+        },
+        {
+          "id": 21,
+          "title": "Operations: Hits vs Misses",
+          "type": "timeseries",
+          "gridPos": { "h": 7, "w": 16, "x": 8, "y": 14 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "sum(rate(infinispan_statistics_hits{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}[5m])) by (cache) * 60",
+              "legendFormat": "✓ hits: {{ cache }}",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(infinispan_statistics_misses{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}[5m])) by (cache) * 60",
+              "legendFormat": "✗ misses: {{ cache }}",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "opm", "decimals": 1,
+              "custom": { "fillOpacity": 15, "lineWidth": 2, "pointSize": 5, "showPoints": "auto", "stacking": { "mode": "none" } },
+              "color": { "mode": "palette-classic" }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byRegexp", "options": "misses" },
+                "properties": [
+                  { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 5] } },
+                  { "id": "custom.fillOpacity", "value": 5 }
+                ]
+              }
+            ]
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "sum"] } }
+        },
+        {
+          "id": 22,
+          "title": "Read/Write Ratio by Cache",
+          "type": "bargauge",
+          "gridPos": { "h": 6, "w": 8, "x": 0, "y": 21 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "max(infinispan_statistics_read_write_ratio{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache)",
+              "legendFormat": "{{ cache }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short", "decimals": 1,
+              "color": { "mode": "continuous-BlYlRd" },
+              "thresholds": { "steps": [
+                { "color": "blue", "value": null }
+              ]}
+            }
+          },
+          "options": { "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true, "reduceOptions": { "calcs": ["lastNotNull"] } }
+        },
+        {
+          "id": 23,
+          "title": "Writes (stores/min)",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 8, "x": 8, "y": 21 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "sum(rate(infinispan_statistics_stores{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}[5m])) by (cache) * 60",
+              "legendFormat": "{{ cache }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "opm",
+              "custom": { "fillOpacity": 20, "lineWidth": 2, "gradientMode": "scheme", "showPoints": "auto" },
+              "color": { "mode": "palette-classic" }
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "sum"] } }
+        },
+        {
+          "id": 24,
+          "title": "Removes (deletes/min)",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 8, "x": 16, "y": 21 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "sum(rate(infinispan_statistics_remove_hits{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}[5m])) by (cache) * 60",
+              "legendFormat": "{{ cache }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "opm",
+              "custom": { "fillOpacity": 20, "lineWidth": 2, "gradientMode": "scheme", "showPoints": "auto" },
+              "color": { "mode": "palette-classic" }
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "sum"] } }
+        },
+
+        {
+          "id": 3,
+          "title": "⚡ LATENCY",
+          "type": "row",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+          "collapsed": false
+        },
+        {
+          "id": 30,
+          "title": "Avg Read Latency",
+          "type": "timeseries",
+          "gridPos": { "h": 7, "w": 8, "x": 0, "y": 28 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "max(infinispan_statistics_average_read_time_nanos{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache) / 1000",
+              "legendFormat": "{{ cache }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "µs", "decimals": 0,
+              "custom": { "fillOpacity": 10, "lineWidth": 2, "gradientMode": "scheme", "showPoints": "auto", "thresholdsStyle": { "mode": "line" } },
+              "color": { "mode": "palette-classic" },
+              "thresholds": { "steps": [
+                { "color": "green", "value": null },
+                { "color": "red", "value": 1000 }
+              ]}
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } }
+        },
+        {
+          "id": 31,
+          "title": "Avg Write Latency",
+          "type": "timeseries",
+          "gridPos": { "h": 7, "w": 8, "x": 8, "y": 28 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "max(infinispan_statistics_average_write_time_nanos{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache) / 1000",
+              "legendFormat": "{{ cache }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "µs", "decimals": 0,
+              "custom": { "fillOpacity": 10, "lineWidth": 2, "gradientMode": "scheme", "showPoints": "auto", "thresholdsStyle": { "mode": "line" } },
+              "color": { "mode": "palette-classic" },
+              "thresholds": { "steps": [
+                { "color": "green", "value": null },
+                { "color": "red", "value": 5000 }
+              ]}
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } }
+        },
+        {
+          "id": 32,
+          "title": "Avg Remove Latency",
+          "type": "timeseries",
+          "gridPos": { "h": 7, "w": 8, "x": 16, "y": 28 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "max(infinispan_statistics_average_remove_time_nanos{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache) / 1000",
+              "legendFormat": "{{ cache }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "µs", "decimals": 0,
+              "custom": { "fillOpacity": 10, "lineWidth": 2, "gradientMode": "scheme", "showPoints": "auto", "thresholdsStyle": { "mode": "line" } },
+              "color": { "mode": "palette-classic" },
+              "thresholds": { "steps": [
+                { "color": "green", "value": null },
+                { "color": "red", "value": 5000 }
+              ]}
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } }
+        },
+        {
+          "id": 33,
+          "title": "Cluster Replication Time",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 35 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "infinispan_rpc_manager_average_replication_time{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}",
+              "legendFormat": "{{ pod }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms", "decimals": 1,
+              "custom": { "fillOpacity": 15, "lineWidth": 2, "gradientMode": "scheme", "showPoints": "auto", "thresholdsStyle": { "mode": "dashed" } },
+              "color": { "mode": "palette-classic" },
+              "thresholds": { "steps": [
+                { "color": "green", "value": null },
+                { "color": "red", "value": 100 }
+              ]}
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max", "mean"] } }
+        },
+        {
+          "id": 34,
+          "title": "Replication Failures",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 35 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "sum(rate(infinispan_rpc_manager_replication_failures{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}[5m])) by (pod) * 60",
+              "legendFormat": "{{ pod }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "opm",
+              "custom": { "fillOpacity": 30, "lineWidth": 2, "drawStyle": "bars" },
+              "color": { "fixedColor": "red", "mode": "fixed" }
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "sum"] } }
+        },
+
+        {
+          "id": 4,
+          "title": "📦 CAPACITY & STORAGE",
+          "type": "row",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
+          "collapsed": false
+        },
+        {
+          "id": 40,
+          "title": "Entries per Cache",
+          "type": "bargauge",
+          "gridPos": { "h": 7, "w": 8, "x": 0, "y": 42 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "max(infinispan_statistics_approximate_entries_unique{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache)",
+              "legendFormat": "{{ cache }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short", "decimals": 0,
+              "color": { "mode": "continuous-blues" },
+              "thresholds": { "steps": [
+                { "color": "blue", "value": null }
+              ]}
+            }
+          },
+          "options": { "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true, "reduceOptions": { "calcs": ["lastNotNull"] } }
+        },
+        {
+          "id": 41,
+          "title": "Entries Over Time",
+          "type": "timeseries",
+          "gridPos": { "h": 7, "w": 16, "x": 8, "y": 42 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "max(infinispan_statistics_approximate_entries_unique{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache)",
+              "legendFormat": "{{ cache }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short", "decimals": 0,
+              "custom": { "fillOpacity": 25, "lineWidth": 2, "gradientMode": "scheme", "showPoints": "auto", "stacking": { "mode": "normal" } },
+              "color": { "mode": "palette-classic" }
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } }
+        },
+        {
+          "id": 42,
+          "title": "Data Memory Used",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 49 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "sum(infinispan_statistics_data_memory_used{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache)",
+              "legendFormat": "{{ cache }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "decbytes",
+              "custom": { "fillOpacity": 25, "lineWidth": 2, "gradientMode": "scheme", "showPoints": "auto" },
+              "color": { "mode": "palette-classic" }
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } }
+        },
+        {
+          "id": 43,
+          "title": "Evictions",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 49 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "sum(rate(infinispan_statistics_evictions{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}[5m])) by (cache) * 60",
+              "legendFormat": "{{ cache }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "opm",
+              "custom": { "fillOpacity": 30, "lineWidth": 2, "drawStyle": "bars" },
+              "color": { "fixedColor": "orange", "mode": "fixed" }
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["sum"] } }
+        },
+
+        {
+          "id": 5,
+          "title": "🌐 NETWORK & CONNECTIONS",
+          "type": "row",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 55 },
+          "collapsed": false
+        },
+        {
+          "id": 50,
+          "title": "Client Connections per Node",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 8, "x": 0, "y": 56 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "infinispan_server_single_port_11222_transport_number_of_local_connections{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}",
+              "legendFormat": "{{ pod }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short", "decimals": 0,
+              "custom": { "fillOpacity": 20, "lineWidth": 2, "gradientMode": "scheme", "showPoints": "auto" },
+              "color": { "mode": "palette-classic" }
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } }
+        },
+        {
+          "id": 51,
+          "title": "Network Throughput:Read",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 8, "x": 8, "y": 56 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "rate(infinispan_server_single_port_11222_transport_total_bytes_read{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}[5m])",
+              "legendFormat": "{{ pod }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "custom": { "fillOpacity": 20, "lineWidth": 2, "gradientMode": "scheme", "showPoints": "auto" },
+              "color": { "mode": "palette-classic" }
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max", "mean"] } }
+        },
+        {
+          "id": 52,
+          "title": "Network Throughput:Write",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 8, "x": 16, "y": 56 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "rate(infinispan_server_single_port_11222_transport_total_bytes_written{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}[5m])",
+              "legendFormat": "{{ pod }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "custom": { "fillOpacity": 20, "lineWidth": 2, "gradientMode": "scheme", "showPoints": "auto" },
+              "color": { "mode": "palette-classic" }
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max", "mean"] } }
+        },
+
+        {
+          "id": 6,
+          "title": "🔒 LOCKS & PERSISTENCE",
+          "type": "row",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 62 },
+          "collapsed": false
+        },
+        {
+          "id": 60,
+          "title": "Lock Contention",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 8, "x": 0, "y": 63 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "infinispan_lock_manager_number_of_locks_held{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}",
+              "legendFormat": "{{ pod }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": { "fillOpacity": 20, "lineWidth": 2 },
+              "color": { "mode": "palette-classic" }
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } }
+        },
+        {
+          "id": 61,
+          "title": "Cache Store Writes",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 8, "x": 8, "y": 63 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "sum(rate(infinispan_cache_store_writes_to_the_stores{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}[5m])) by (cache) * 60",
+              "legendFormat": "{{ cache }}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "opm",
+              "custom": { "fillOpacity": 20, "lineWidth": 2, "gradientMode": "scheme" },
+              "color": { "mode": "palette-classic" }
+            }
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "sum"] } }
+        },
+        {
+          "id": 62,
+          "title": "Cache Loader (loads vs misses)",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 8, "x": 16, "y": 63 },
+          "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
+          "targets": [
+            {
+              "expr": "sum(rate(infinispan_cache_loader_cache_loader_loads{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}[5m])) by (cache) * 60",
+              "legendFormat": "loads: {{ cache }}",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(infinispan_cache_loader_cache_loader_misses{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}[5m])) by (cache) * 60",
+              "legendFormat": "misses: {{ cache }}",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "opm",
+              "custom": { "fillOpacity": 15, "lineWidth": 2 },
+              "color": { "mode": "palette-classic" }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byRegexp", "options": "misses" },
+                "properties": [
+                  { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 5] } }
+                ]
+              }
+            ]
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "sum"] } }
+        }
+      ]
+    }

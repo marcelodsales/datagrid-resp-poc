@@ -1,0 +1,34 @@
+apiVersion: infinispan.org/v1
+kind: Infinispan
+metadata:
+  name: healthcare
+  namespace: rhdg-poc-test
+  annotations:
+    infinispan.org/monitoring: "true"
+spec:
+  replicas: 2
+  version: 8.6.0-1
+  configMapName: healthcare-server-config
+  service:
+    type: DataGrid
+  container:
+    cpu: "500m"
+    memory: "1Gi"
+  security:
+    endpointSecretName: healthcare-credentials
+    endpointEncryption:
+      type: Secret
+      certSecretName: healthcare-tls
+  scheduling:
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  infinispan_cr: healthcare
+              topologyKey: kubernetes.io/hostname
+  expose:
+    type: Route
+    host: respcache.apps.ocp4.masales.cloud

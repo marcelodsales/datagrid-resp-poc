@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spring-session-app
+  namespace: rhdg-poc-test
+  labels:
+    app: spring-session-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spring-session-app
+  template:
+    metadata:
+      labels:
+        app: spring-session-app
+    spec:
+      containers:
+        - name: spring-session-app
+          image: image-registry.openshift-image-registry.svc:5000/rhdg-poc-test/spring-session-app:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: DG_HOST
+              value: "platform"
+            - name: DG_PORT
+              value: "11222"
+            - name: DG_USERNAME
+              value: "app-platform"
+            - name: DG_PASSWORD
+              value: "pl4tf0rm!"
+            - name: DG_SSL
+              value: "true"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10

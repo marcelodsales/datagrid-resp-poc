@@ -1,0 +1,16 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: spring-session-app
+  namespace: rhdg-poc-test
+  labels:
+    app: spring-session-app
+spec:
+  to:
+    kind: Service
+    name: spring-session-app
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

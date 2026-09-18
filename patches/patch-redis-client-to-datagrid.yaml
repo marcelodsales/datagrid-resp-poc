@@ -1,0 +1,22 @@
+spec:
+  template:
+    spec:
+      containers:
+        - name: redis-client-app
+          env:
+            - name: REDIS_HOST
+              value: "healthcare"
+            - name: REDIS_PORT
+              value: "11222"
+            - name: REDIS_USERNAME
+              value: "app-healthcare"
+            - name: REDIS_PASSWORD
+              value: "h34lthc4r3!"
+            - name: REDIS_SSL
+              value: "true"
+            - name: CACHE_CLUSTER
+              value: "healthcare"
+            - name: CACHE_NAME
+              value: "respCache"
+            - name: CACHE_MODE
+              value: "distributed"

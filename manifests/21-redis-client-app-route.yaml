@@ -1,0 +1,16 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: redis-client-app
+  namespace: rhdg-poc-test
+  labels:
+    app: redis-client-app
+spec:
+  to:
+    kind: Service
+    name: redis-client-app
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

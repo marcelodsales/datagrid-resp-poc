@@ -1,0 +1,16 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: healthcare-tls
+  namespace: rhdg-poc-test
+spec:
+  secretName: healthcare-tls
+  issuerRef:
+    name: healthcare-ca-issuer
+    kind: Issuer
+  dnsNames:
+    - respcache.apps.ocp4.masales.cloud
+    - healthcare.rhdg-poc-test.svc
+    - healthcare.rhdg-poc-test.svc.cluster.local
+  duration: 8760h
+  renewBefore: 720h
