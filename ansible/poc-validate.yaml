@@ -64,7 +64,7 @@
           failed_when: false
           changed_when: false
 
-        - name: Remove cache finalizers (prevent namespace stuck in Terminating)
+        - name: Remove all finalizers from Data Grid resources
           shell: |
             for cache in $(oc get caches -n {{ target_namespace }} -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
               oc patch cache "$cache" -n {{ target_namespace }} --type merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null
@@ -75,12 +75,33 @@
           when: ns_exists.rc == 0
           changed_when: true
 
-        - name: Delete namespace
-          command: "oc delete project {{ target_namespace }} --ignore-not-found=true --timeout=120s"
+        - name: Delete namespace (may timeout if finalizers linger)
+          command: "oc delete project {{ target_namespace }} --ignore-not-found=true --timeout=60s"
+          register: ns_delete
           when: ns_exists.rc == 0
+          failed_when: false
           changed_when: true
 
-        - name: Wait for namespace deletion to complete
+        - name: Force-finalize namespace if stuck in Terminating
+          shell: |
+            oc get namespace {{ target_namespace }} -o json 2>/dev/null \
+              | jq '.spec.finalizers = []' \
+              | oc replace --raw "/api/v1/namespaces/{{ target_namespace }}/finalize" -f - > /dev/null 2>&1
+          register: force_finalize
+          when: ns_exists.rc == 0
+          failed_when: false
+          changed_when: true
+
+        - name: Remove any remaining resource finalizers (post-delete)
+          shell: |
+            for cache in $(oc get caches -n {{ target_namespace }} -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+              oc patch cache "$cache" -n {{ target_namespace }} --type merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null
+            done
+          when: ns_exists.rc == 0
+          failed_when: false
+          changed_when: false
+
+        - name: Wait for namespace to disappear
           command: "oc get namespace {{ target_namespace }}"
           register: ns_check
           until: ns_check.rc != 0
@@ -90,10 +111,15 @@
           changed_when: false
           when: ns_exists.rc == 0
 
+        - name: Fail if namespace still exists
+          fail:
+            msg: "Namespace {{ target_namespace }} is stuck. Check for remaining finalizers manually."
+          when: ns_exists.rc == 0 and ns_check.rc == 0
+
         - name: "Namespace {{ target_namespace }} removed"
           debug:
             msg: "Namespace deleted successfully"
-          when: ns_exists.rc == 0
+          when: ns_exists.rc == 0 and (ns_check.rc is not defined or ns_check.rc != 0)
 
         - name: "Namespace {{ target_namespace }} does not exist"
           debug:
