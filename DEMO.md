@@ -356,18 +356,6 @@ Both pods are back. Data was preserved on the surviving owner and automatically 
 
 ---
 
-## Reset
-
-Switch `redis-client-app` back to Redis for the next demo run:
-
-```bash
-oc patch deployment redis-client-app -n rhdg-poc-test \
-  --patch-file patches/patch-redis-client-to-redis.yaml
-oc rollout status deployment/redis-client-app -n rhdg-poc-test
-```
-
----
-
 ## Validation Matrix
 
 This matrix summarizes every capability validated during the PoC.
@@ -381,8 +369,6 @@ This matrix summarizes every capability validated during the PoC.
 | C-3 | RESP Pub/Sub (cross-app) | Spring Boot + Quarkus share events via PUBLISH/SUBSCRIBE | `redis-client-app` + `external-cache-client` | Act 4 |
 | C-4 | Spring Cache (`@Cacheable`) | Spring Boot app caches data via Hot Rod | `spring-cache-app` -> `app-config` | Act 5.1 |
 | C-5 | Spring Session | HTTP session externalized to Data Grid | `spring-session-app` -> `user-sessions` | Act 5.2 |
-| C-6 | RESP with .NET | .NET 10 app using StackExchange.Redis with HGET/HSET | `dotnet-hash-test` -> `respCache` | [README Section 10.5](README.md#105-dotnet-hash-test-resp--redis-hashes--load-testing) |
-| C-7 | Load Testing | Gatling 3 scenarios, peak 50 req/s, 0 failures | `gatling-load-test` -> `dotnet-hash-test` | [README Section 10.5](README.md#105-dotnet-hash-test-resp--redis-hashes--load-testing) |
 
 ### Multi-Tenancy and Isolation
 

@@ -919,76 +919,7 @@ oc apply -f manifests/27-spring-session-app-route.yaml
 
 > **Ref:** [Spring Boot Starter Guide — Spring Session with remote server](https://docs.redhat.com/en/documentation/red_hat_data_grid/8.6/html/using_data_grid_with_spring/)
 
-### 10.5 dotnet-hash-test (RESP + Redis Hashes + Load Testing)
-
-Validates RESP protocol with **.NET 10** using `StackExchange.Redis` and Redis Hash operations (`HGET`/`HSET`). Implements a cache-aside pattern: the app tries the cache first, and falls back to an embedded SQLite database on timeout or miss. Includes Gatling load testing to stress the RESP endpoint under concurrent access.
-
-This app runs **locally** (not deployed to OpenShift). It connects to the Data Grid `healthcare` cluster via the external RESP Route.
-
-**Run the .NET app:**
-
-```bash
-cd apps/dotnet-hash-test
-export DG_HOST=respcache.apps.ocp4.masales.cloud
-export DG_PORT=443
-export DG_USER=app-healthcare
-export DG_PASSWORD=h34lthc4r3!
-dotnet run --launch-profile http
-# Listens on http://localhost:5100
-```
-
-On startup, the app seeds 20 Redis Hashes with 50 fields each (1,000 entries total) into both cache and SQLite with identical deterministic data.
-
-**Endpoints:**
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /catalog/{table}/{field}` | Single HGET with SQLite fallback |
-| `GET /catalogs` | Multi-HGET (20 parallel HashGetAsync) with SQLite fallback |
-| `GET /metrics` | Counters, cache/db latency percentiles, last 20 timeouts |
-| `GET /metrics/reset` | Reset all counters |
-| `GET /health` | Connection status |
-
-**Smoke test:**
-
-```bash
-# Health check
-curl -s http://localhost:5100/health | jq .
-
-# Single HGET
-curl -s http://localhost:5100/catalog/catalog_table_000/field_0001 | jq .
-
-# Multi-HGET (20 parallel)
-curl -s http://localhost:5100/catalogs | jq '{source, count, latencyMs}'
-
-# Metrics after some requests
-curl -s http://localhost:5100/metrics | jq .
-```
-
-**Load testing with Gatling:**
-
-A Gatling simulation in `apps/gatling-load-test/` generates HTTP load against the .NET API with three scenarios:
-
-1. **Single HGET** - ramp 1->10 req/s, then constant 10 req/s
-2. **Multi HGET (20 parallel)** - ramp 1->5 req/s, then constant 5 req/s
-3. **Mixed Workload** - 80% single / 20% multi, ramp up to 50 req/s
-
-```bash
-cd apps/gatling-load-test
-mvn gatling:test
-# HTML report at target/gatling/hashtestsimulation-<timestamp>/index.html
-```
-
-| Component | Version |
-|-----------|---------|
-| .NET | 10.0 |
-| StackExchange.Redis | 3.2.15 |
-| Gatling | 3.15.1 |
-| gatling-maven-plugin | 4.21.12 |
-
-> **Ref:** [RESP Protocol Guide](https://docs.redhat.com/en/documentation/red_hat_data_grid/8.6/html/using_the_resp_protocol_endpoint_with_data_grid/)
-
-### 10.6 Verify all applications
+### 10.5 Verify all applications
 
 ```bash
 oc get pods -l 'app in (redis-client-app,spring-cache-app,spring-session-app)'
@@ -1095,9 +1026,8 @@ The `respCache` is defined in the healthcare server configuration (`09-healthcar
 | `spring-cache-app` | Hot Rod (port 11222) | healthcare | app-config | Spring Boot + @Cacheable |
 | `spring-session-app` | Hot Rod (port 11222) | platform | user-sessions | Spring Boot + Spring Session |
 | `external-cache-client` | RESP (port 443 via Route) | healthcare | respCache | Quarkus 3 + Jedis (local) |
-| `dotnet-hash-test` | RESP (port 443 via Route) | healthcare | respCache | .NET 10 + StackExchange.Redis (local) |
 
-All OpenShift-deployed applications connect to Data Grid over TLS using the cluster's internal Service name (e.g., `healthcare` or `platform`) on port 11222. Local apps (`external-cache-client`, `dotnet-hash-test`) connect externally via passthrough Route on port 443.
+All OpenShift-deployed applications connect to Data Grid over TLS using the cluster's internal Service name (e.g., `healthcare` or `platform`) on port 11222. The local app (`external-cache-client`) connects externally via passthrough Route on port 443.
 
 ---
 
