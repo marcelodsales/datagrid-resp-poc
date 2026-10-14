@@ -22,8 +22,9 @@ Once the environment is ready, proceed to the **[Demo Walkthrough](DEMO.md)** fo
 12. [Architecture Decisions](#12-architecture-decisions)
 13. [Cache Reference](#13-cache-reference)
 14. [Application Reference](#14-application-reference)
-15. [Documentation References](#15-documentation-references)
-16. [Manifest Index](#16-manifest-index)
+15. [Automated Validation (Ansible)](#15-automated-validation-ansible)
+16. [Documentation References](#16-documentation-references)
+17. [Manifest Index](#17-manifest-index)
 
 ---
 
@@ -1037,7 +1038,41 @@ All OpenShift-deployed applications connect to Data Grid over TLS using the clus
 
 ---
 
-## 15. Documentation References
+## 15. Automated Validation (Ansible)
+
+An Ansible playbook automates the entire PoC lifecycle: namespace creation, operator installation, cluster deployment, application builds, all functional tests, and cleanup.
+
+### 15.1 Prerequisites
+
+- Ansible installed (`ansible-playbook` command available)
+- `oc` CLI installed and authenticated to the cluster
+- `jq` and `curl` installed
+
+### 15.2 Usage
+
+| Command | Description |
+|---------|-------------|
+| `ansible-playbook ansible/poc-validate.yaml` | Full run: removes existing namespace, deploys everything from scratch, executes all tests |
+| `ansible-playbook ansible/poc-validate.yaml --tags cleanup` | Only removes the namespace (with finalizer cleanup) |
+| `ansible-playbook ansible/poc-validate.yaml --tags infra` | Only deploys infrastructure (operator, clusters, caches, Redis) |
+| `ansible-playbook ansible/poc-validate.yaml --tags apps` | Only builds and deploys test applications |
+| `ansible-playbook ansible/poc-validate.yaml --tags tests` | Only executes tests (infrastructure and apps must already exist) |
+| `ansible-playbook ansible/poc-validate.yaml -e target_namespace=my-ns` | Use a different namespace |
+
+### 15.3 What the playbook validates
+
+- 7 functional RESP tests against Redis baseline (PING, SET+TTL, GET, TTL, GETDEL, duplicate detection, auto-expiration)
+- 7 identical tests against Data Grid RESP endpoint (transparency proof)
+- Spring Cache — `@Cacheable` miss/hit via `lookupCount`
+- Spring Session — HTTP session externalization and persistence
+- External RESP access via OpenShift Route (TLS passthrough)
+- High Availability — pod failure, data survival, automatic cluster recovery
+- Prometheus metrics collection from all Data Grid nodes
+- Grafana dashboard (if Grafana Operator is installed)
+
+---
+
+## 16. Documentation References
 
 | Document | Scope |
 |----------|-------|
@@ -1054,7 +1089,7 @@ All documentation is available at the [Red Hat Customer Portal, Data Grid 8.6](h
 
 ---
 
-## 16. Manifest Index
+## 17. Manifest Index
 
 | File | Resource | Description |
 |------|----------|-------------|
