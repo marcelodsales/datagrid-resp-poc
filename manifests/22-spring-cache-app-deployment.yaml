@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: spring-cache-app
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
   labels:
     app: spring-cache-app
 spec:

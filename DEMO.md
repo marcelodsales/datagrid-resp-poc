@@ -5,9 +5,9 @@ Complete the [Environment Setup](README.md) before starting. All infrastructure 
 ## Verify environment
 
 ```bash
-oc get infinispan -n rhdg-poc
-oc get caches -n rhdg-poc
-oc get pods -n rhdg-poc
+oc get infinispan -n rhdg-poc-test
+oc get caches -n rhdg-poc-test
+oc get pods -n rhdg-poc-test
 ```
 
 Expected: both clusters `WellFormed`, all caches `Ready`, all pods `Running`.
@@ -21,7 +21,7 @@ The `redis-client-app` starts connected to the Redis baseline instance. This est
 ### 1.1 Verify connection to Redis
 
 ```bash
-ROUTE=$(oc get route redis-client-app -n rhdg-poc -o jsonpath='{.spec.host}')
+ROUTE=$(oc get route redis-client-app -n rhdg-poc-test -o jsonpath='{.spec.host}')
 curl -sk "https://${ROUTE}/api/info" | jq .
 ```
 
@@ -128,9 +128,9 @@ All 7 functional tests pass against Redis.
 ### 2.1 Patch the deployment
 
 ```bash
-oc patch deployment redis-client-app -n rhdg-poc \
+oc patch deployment redis-client-app -n rhdg-poc-test \
   --patch-file patches/patch-redis-client-to-datagrid.yaml
-oc rollout status deployment/redis-client-app -n rhdg-poc
+oc rollout status deployment/redis-client-app -n rhdg-poc-test
 ```
 
 ### 2.2 Verify the switch
@@ -262,7 +262,7 @@ Two different frameworks (Spring Boot on OpenShift + Quarkus running locally), s
 ### 5.1 Spring Cache
 
 ```bash
-ROUTE=$(oc get route spring-cache-app -n rhdg-poc -o jsonpath='{.spec.host}')
+ROUTE=$(oc get route spring-cache-app -n rhdg-poc-test -o jsonpath='{.spec.host}')
 
 # First call: fetches from source, stores in cache
 curl -sk "https://${ROUTE}/api/specialties" | jq .
@@ -279,7 +279,7 @@ The `stats` endpoint shows hit/miss counts confirming cache is working.
 ### 5.2 Spring Session
 
 ```bash
-ROUTE=$(oc get route spring-session-app -n rhdg-poc -o jsonpath='{.spec.host}')
+ROUTE=$(oc get route spring-session-app -n rhdg-poc-test -o jsonpath='{.spec.host}')
 
 # Create a session attribute
 curl -sk -c /tmp/cookies.txt -X PUT "https://${ROUTE}/api/session/attributes/user" \
@@ -327,7 +327,7 @@ Inspect the `user-sessions` cache to see the session data created in Act 5.2.
 ### 7.1 Verify cluster state
 
 ```bash
-oc get pods -l clusterName=healthcare -n rhdg-poc
+oc get pods -l clusterName=healthcare -n rhdg-poc-test
 ```
 
 Expected: 2 pods Running.
@@ -339,7 +339,7 @@ In the browser, SET `ack:ha-test` = `survives-failover` (TTL 300).
 ### 7.3 Kill a pod
 
 ```bash
-oc delete pod healthcare-0 -n rhdg-poc
+oc delete pod healthcare-0 -n rhdg-poc-test
 ```
 
 ### 7.4 Verify data survives
@@ -348,8 +348,8 @@ While the pod restarts, click **GET** on `ack:ha-test` in the browser. The value
 
 ```bash
 # Wait for recovery
-oc wait --for=condition=WellFormed infinispan/healthcare -n rhdg-poc --timeout=120s
-oc get pods -l clusterName=healthcare -n rhdg-poc
+oc wait --for=condition=WellFormed infinispan/healthcare -n rhdg-poc-test --timeout=120s
+oc get pods -l clusterName=healthcare -n rhdg-poc-test
 ```
 
 Both pods are back. Data was preserved on the surviving owner and automatically rebalanced. Distributed caches with `owners: 2` tolerate single-node failures with zero data loss.
@@ -361,9 +361,9 @@ Both pods are back. Data was preserved on the surviving owner and automatically 
 Switch `redis-client-app` back to Redis for the next demo run:
 
 ```bash
-oc patch deployment redis-client-app -n rhdg-poc \
+oc patch deployment redis-client-app -n rhdg-poc-test \
   --patch-file patches/patch-redis-client-to-redis.yaml
-oc rollout status deployment/redis-client-app -n rhdg-poc
+oc rollout status deployment/redis-client-app -n rhdg-poc-test
 ```
 
 ---

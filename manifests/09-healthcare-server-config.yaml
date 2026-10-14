@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: healthcare-server-config
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 data:
   infinispan-config.yaml: |
     infinispan:

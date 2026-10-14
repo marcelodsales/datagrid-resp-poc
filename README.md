@@ -51,7 +51,7 @@ This is the recommended isolation model, **not** a single large shared cluster.
 - OpenShift 4.x cluster with admin access
 - `oc` CLI authenticated to the cluster
 - `jq` installed (used for JSON output formatting throughout this guide)
-- Namespace for the PoC (this guide uses `rhdg-poc`)
+- Namespace for the PoC (this guide uses `rhdg-poc-test`)
 - Data Grid Operator available in OperatorHub (included with Application Foundations subscription)
 - For test applications: access to the OpenShift internal image registry
 - **cert-manager** already installed in the cluster (for TLS certificate management of the `healthcare` cluster)
@@ -60,7 +60,7 @@ This is the recommended isolation model, **not** a single large shared cluster.
 ### 2.1 Create the namespace
 
 ```bash
-oc new-project rhdg-poc
+oc new-project rhdg-poc-test
 ```
 
 ---
@@ -70,7 +70,7 @@ oc new-project rhdg-poc
 | Component | Details |
 |-----------|---------|
 | OpenShift version | 4.x (tested on SNO) |
-| Namespace | `rhdg-poc` |
+| Namespace | `rhdg-poc-test` |
 | Data Grid version | 8.6.0-1 |
 | Operator channel | `stable` |
 | TLS | Automatic via OpenShift service serving certificates |
@@ -99,11 +99,11 @@ This PoC uses Red Hat products. The table below shows the upstream community equ
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
 metadata:
-  name: rhdg-poc-og
-  namespace: rhdg-poc
+  name: rhdg-poc-test-og
+  namespace: rhdg-poc-test
 spec:
   targetNamespaces:
-    - rhdg-poc
+    - rhdg-poc-test
 ```
 
 ### 4.2 Subscription
@@ -114,7 +114,7 @@ apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
   name: datagrid-operator
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 spec:
   channel: stable
   installPlanApproval: Automatic
@@ -134,7 +134,7 @@ oc apply -f manifests/02-operator-subscription.yaml
 
 ```bash
 oc wait --for=condition=Available deployment/infinispan-operator-controller-manager \
-  -n rhdg-poc --timeout=300s
+  -n rhdg-poc-test --timeout=300s
 ```
 
 > **Ref:** [Operator Guide, Ch.1 — Installing Data Grid Operator](https://docs.redhat.com/en/documentation/red_hat_data_grid/8.6/html/data_grid_operator_guide/installing-the-operator)
@@ -156,7 +156,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: healthcare-credentials
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 type: Opaque
 stringData:
   identities.yaml: |
@@ -179,7 +179,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: platform-credentials
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 type: Opaque
 stringData:
   identities.yaml: |
@@ -230,7 +230,7 @@ apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
   name: healthcare-selfsigned
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 spec:
   selfSigned: {}
 ```
@@ -243,7 +243,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: healthcare-ca
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 spec:
   isCA: true
   commonName: healthcare-ca
@@ -266,7 +266,7 @@ apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
   name: healthcare-ca-issuer
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 spec:
   ca:
     secretName: healthcare-ca-tls
@@ -280,7 +280,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: healthcare-tls
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 spec:
   secretName: healthcare-tls
   issuerRef:
@@ -288,8 +288,8 @@ spec:
     kind: Issuer
   dnsNames:
     - respcache.apps.ocp4.masales.cloud
-    - healthcare.rhdg-poc.svc
-    - healthcare.rhdg-poc.svc.cluster.local
+    - healthcare.rhdg-poc-test.svc
+    - healthcare.rhdg-poc-test.svc.cluster.local
   duration: 8760h
   renewBefore: 720h
 ```
@@ -303,10 +303,10 @@ oc apply -f manifests/07-healthcare-ca-issuer.yaml
 oc apply -f manifests/08-healthcare-tls-certificate.yaml
 
 # Wait for certificate to be issued
-oc wait --for=condition=Ready certificate/healthcare-tls -n rhdg-poc --timeout=60s
+oc wait --for=condition=Ready certificate/healthcare-tls -n rhdg-poc-test --timeout=60s
 
 # Verify the Secret was created with the expected SANs
-oc get secret healthcare-tls -n rhdg-poc
+oc get secret healthcare-tls -n rhdg-poc-test
 ```
 
 The cert-manager chain: `SelfSigned Issuer` -> issues `CA Certificate` -> `CA Issuer` uses that CA -> issues `Server Certificate` with all SANs. cert-manager auto-renews the server certificate 30 days before expiry. Data Grid monitors the keystore and reloads the certificate without pod restart.
@@ -323,7 +323,7 @@ apiVersion: infinispan.org/v1
 kind: Infinispan
 metadata:
   name: healthcare
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
   annotations:
     infinispan.org/monitoring: "true"
 spec:
@@ -367,7 +367,7 @@ apiVersion: infinispan.org/v1
 kind: Infinispan
 metadata:
   name: platform
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
   annotations:
     infinispan.org/monitoring: "true"
 spec:
@@ -410,7 +410,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: healthcare-server-config
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 data:
   infinispan-config.yaml: |
     infinispan:
@@ -503,7 +503,7 @@ apiVersion: infinispan.org/v2alpha1
 kind: Cache
 metadata:
   name: event-tracking
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 spec:
   clusterName: healthcare
   name: event-tracking
@@ -536,7 +536,7 @@ apiVersion: infinispan.org/v2alpha1
 kind: Cache
 metadata:
   name: app-config
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 spec:
   clusterName: healthcare
   name: app-config
@@ -563,7 +563,7 @@ apiVersion: infinispan.org/v2alpha1
 kind: Cache
 metadata:
   name: user-sessions
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 spec:
   clusterName: platform
   name: user-sessions
@@ -658,7 +658,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: redis-secret
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 type: Opaque
 stringData:
   password: r3d1s-p0c-2026             # <- change in production
@@ -672,7 +672,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: redis
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 spec:
   replicas: 1
   selector:
@@ -742,7 +742,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: redis
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 spec:
   selector:
     app: redis
@@ -831,13 +831,13 @@ All application images are built directly on OpenShift using **Binary Builds**. 
 ```bash
 # 1. Create BuildConfigs (first time only)
 for APP in redis-client-app spring-cache-app spring-session-app; do
-  oc new-build --name=${APP} --binary --strategy=docker -n rhdg-poc
+  oc new-build --name=${APP} --binary --strategy=docker -n rhdg-poc-test
 done
 
 # 2. Build and push images to the internal registry
 for APP in redis-client-app spring-cache-app spring-session-app; do
   echo "=== Building ${APP} ==="
-  oc start-build ${APP} --from-dir=apps/${APP} --follow -n rhdg-poc
+  oc start-build ${APP} --from-dir=apps/${APP} --follow -n rhdg-poc-test
 done
 ```
 
@@ -885,10 +885,10 @@ During the demo, use the patch files in `patches/` to switch backends:
 
 ```bash
 # Switch to Data Grid
-oc patch deployment redis-client-app -n rhdg-poc --patch-file patches/patch-redis-client-to-datagrid.yaml
+oc patch deployment redis-client-app -n rhdg-poc-test --patch-file patches/patch-redis-client-to-datagrid.yaml
 
 # Switch back to Redis
-oc patch deployment redis-client-app -n rhdg-poc --patch-file patches/patch-redis-client-to-redis.yaml
+oc patch deployment redis-client-app -n rhdg-poc-test --patch-file patches/patch-redis-client-to-redis.yaml
 ```
 
 The app uses the `respCache`, defined in the healthcare server configuration (`manifests/09-healthcare-server-config.yaml`) with key encoding `application/octet-stream` (mandatory for RESP), value encoding `application/x-protostream` (enables Console visibility), `RESPHashFunctionPartitioner` (CRC16, Redis-compatible hash slots), and alias `"0"` (Redis logical database 0).
@@ -1025,7 +1025,7 @@ EOF
 ### 11.3 Verify ServiceMonitors
 
 ```bash
-oc get servicemonitor -n rhdg-poc
+oc get servicemonitor -n rhdg-poc-test
 ```
 
 Expected output:

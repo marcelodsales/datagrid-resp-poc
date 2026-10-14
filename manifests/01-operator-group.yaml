@@ -1,8 +1,8 @@
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
 metadata:
-  name: rhdg-poc-og
-  namespace: rhdg-poc
+  name: rhdg-poc-test-og
+  namespace: rhdg-poc-test
 spec:
   targetNamespaces:
-    - rhdg-poc
+    - rhdg-poc-test

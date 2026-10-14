@@ -2,7 +2,7 @@ apiVersion: infinispan.org/v2alpha1
 kind: Cache
 metadata:
   name: event-tracking
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 spec:
   clusterName: healthcare
   name: event-tracking

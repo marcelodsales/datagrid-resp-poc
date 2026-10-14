@@ -2,6 +2,6 @@ apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
   name: healthcare-selfsigned
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 spec:
   selfSigned: {}

@@ -2,7 +2,7 @@ apiVersion: infinispan.org/v2alpha1
 kind: Cache
 metadata:
   name: user-sessions
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
 spec:
   clusterName: platform
   name: user-sessions

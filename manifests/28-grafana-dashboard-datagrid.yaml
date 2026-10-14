@@ -11,7 +11,7 @@ spec:
   json: |
     {
       "id": null,
-      "uid": "rhdg-poc",
+      "uid": "rhdg-poc-test",
       "title": "Red Hat Data Grid 8.6: Cache as a Service PoC",
       "description": "Multi-tenant cache clusters on OpenShift: healthcare (2 nodes) + platform (3 nodes), 4 caches across 3 consumption models (RESP, Spring Cache, Spring Session)",
       "editable": true,
@@ -38,8 +38,8 @@ spec:
             "label": "Cluster",
             "type": "query",
             "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
-            "query": "label_values(infinispan_cluster_size{namespace=\"rhdg-poc\"}, job)",
-            "definition": "label_values(infinispan_cluster_size{namespace=\"rhdg-poc\"}, job)",
+            "query": "label_values(infinispan_cluster_size{namespace=\"rhdg-poc-test\"}, job)",
+            "definition": "label_values(infinispan_cluster_size{namespace=\"rhdg-poc-test\"}, job)",
             "regex": "",
             "refresh": 2,
             "includeAll": true,
@@ -52,8 +52,8 @@ spec:
             "label": "Cache",
             "type": "query",
             "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
-            "query": "label_values(infinispan_statistics_hits{namespace=\"rhdg-poc\", job=~\"${cluster}\"}, cache)",
-            "definition": "label_values(infinispan_statistics_hits{namespace=\"rhdg-poc\", job=~\"${cluster}\"}, cache)",
+            "query": "label_values(infinispan_statistics_hits{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}, cache)",
+            "definition": "label_values(infinispan_statistics_hits{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}, cache)",
             "refresh": 2,
             "includeAll": true,
             "multi": true,
@@ -71,7 +71,7 @@ spec:
           "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
           "options": {
             "mode": "markdown",
-            "content": "# Cache as a Service: Operational Dashboard\n**Clusters**: `healthcare` (RESP, Spring Cache) · `platform` (Spring Session)  |  **Protocol**: Hot Rod 11222, RESP 11222, REST 11222, Admin 11223  |  **Operator**: Data Grid 8.6  |  **Namespace**: `rhdg-poc`"
+            "content": "# Cache as a Service: Operational Dashboard\n**Clusters**: `healthcare` (RESP, Spring Cache) · `platform` (Spring Session)  |  **Protocol**: Hot Rod 11222, RESP 11222, REST 11222, Admin 11223  |  **Operator**: Data Grid 8.6  |  **Namespace**: `rhdg-poc-test`"
           },
           "transparent": true
         },
@@ -91,7 +91,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "sum(max(infinispan_cluster_size{namespace=\"rhdg-poc\", job=~\"${cluster}\"}) by (job))",
+              "expr": "sum(max(infinispan_cluster_size{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}) by (job))",
               "legendFormat": "nodes",
               "refId": "A"
             }
@@ -116,7 +116,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "max(infinispan_cluster_size{namespace=\"rhdg-poc\", job=\"healthcare-admin\"})",
+              "expr": "max(infinispan_cluster_size{namespace=\"rhdg-poc-test\", job=\"healthcare-admin\"})",
               "legendFormat": "nodes",
               "refId": "A"
             }
@@ -143,7 +143,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "max(infinispan_cluster_size{namespace=\"rhdg-poc\", job=\"platform-admin\"})",
+              "expr": "max(infinispan_cluster_size{namespace=\"rhdg-poc-test\", job=\"platform-admin\"})",
               "legendFormat": "nodes",
               "refId": "A"
             }
@@ -170,7 +170,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "sum(max(infinispan_number_of_running_caches{namespace=\"rhdg-poc\", job=~\"${cluster}\"}) by (job))",
+              "expr": "sum(max(infinispan_number_of_running_caches{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}) by (job))",
               "legendFormat": "caches",
               "refId": "A"
             }
@@ -191,7 +191,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "avg(infinispan_rpc_manager_success_ratio_floating_point{namespace=\"rhdg-poc\", job=~\"${cluster}\"}) * 100",
+              "expr": "avg(infinispan_rpc_manager_success_ratio_floating_point{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}) * 100",
               "legendFormat": "",
               "refId": "A"
             }
@@ -217,7 +217,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "sum(infinispan_server_single_port_11222_transport_number_of_local_connections{namespace=\"rhdg-poc\", job=~\"${cluster}\"})",
+              "expr": "sum(infinispan_server_single_port_11222_transport_number_of_local_connections{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"})",
               "legendFormat": "connections",
               "refId": "A"
             }
@@ -239,7 +239,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "infinispan_local_container_stats_memory_used{namespace=\"rhdg-poc\", job=~\"${cluster}\"} / on(pod, job, namespace) infinispan_local_container_stats_memory_max{namespace=\"rhdg-poc\", job=~\"${cluster}\"} * 100",
+              "expr": "infinispan_local_container_stats_memory_used{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"} / on(pod, job, namespace) infinispan_local_container_stats_memory_max{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"} * 100",
               "legendFormat": "{{ pod }}",
               "refId": "A"
             }
@@ -266,12 +266,12 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "max(infinispan_cluster_size{namespace=\"rhdg-poc\", job=\"healthcare-admin\"})",
+              "expr": "max(infinispan_cluster_size{namespace=\"rhdg-poc-test\", job=\"healthcare-admin\"})",
               "legendFormat": "healthcare",
               "refId": "A"
             },
             {
-              "expr": "max(infinispan_cluster_size{namespace=\"rhdg-poc\", job=\"platform-admin\"})",
+              "expr": "max(infinispan_cluster_size{namespace=\"rhdg-poc-test\", job=\"platform-admin\"})",
               "legendFormat": "platform",
               "refId": "B"
             }
@@ -301,7 +301,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "max(infinispan_statistics_hit_ratio{namespace=\"rhdg-poc\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache, job)",
+              "expr": "max(infinispan_statistics_hit_ratio{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache, job)",
               "legendFormat": "{{ cache }} ({{ job }})",
               "refId": "A"
             }
@@ -328,12 +328,12 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "sum(rate(infinispan_statistics_hits{namespace=\"rhdg-poc\", job=~\"${cluster}\", cache=~\"${cache}\"}[5m])) by (cache) * 60",
+              "expr": "sum(rate(infinispan_statistics_hits{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}[5m])) by (cache) * 60",
               "legendFormat": "✓ hits: {{ cache }}",
               "refId": "A"
             },
             {
-              "expr": "sum(rate(infinispan_statistics_misses{namespace=\"rhdg-poc\", job=~\"${cluster}\", cache=~\"${cache}\"}[5m])) by (cache) * 60",
+              "expr": "sum(rate(infinispan_statistics_misses{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}[5m])) by (cache) * 60",
               "legendFormat": "✗ misses: {{ cache }}",
               "refId": "B"
             }
@@ -364,7 +364,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "max(infinispan_statistics_read_write_ratio{namespace=\"rhdg-poc\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache)",
+              "expr": "max(infinispan_statistics_read_write_ratio{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache)",
               "legendFormat": "{{ cache }}",
               "refId": "A"
             }
@@ -388,7 +388,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "sum(rate(infinispan_statistics_stores{namespace=\"rhdg-poc\", job=~\"${cluster}\", cache=~\"${cache}\"}[5m])) by (cache) * 60",
+              "expr": "sum(rate(infinispan_statistics_stores{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}[5m])) by (cache) * 60",
               "legendFormat": "{{ cache }}",
               "refId": "A"
             }
@@ -410,7 +410,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "sum(rate(infinispan_statistics_remove_hits{namespace=\"rhdg-poc\", job=~\"${cluster}\", cache=~\"${cache}\"}[5m])) by (cache) * 60",
+              "expr": "sum(rate(infinispan_statistics_remove_hits{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}[5m])) by (cache) * 60",
               "legendFormat": "{{ cache }}",
               "refId": "A"
             }
@@ -440,7 +440,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "max(infinispan_statistics_average_read_time_nanos{namespace=\"rhdg-poc\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache) / 1000",
+              "expr": "max(infinispan_statistics_average_read_time_nanos{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache) / 1000",
               "legendFormat": "{{ cache }}",
               "refId": "A"
             }
@@ -466,7 +466,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "max(infinispan_statistics_average_write_time_nanos{namespace=\"rhdg-poc\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache) / 1000",
+              "expr": "max(infinispan_statistics_average_write_time_nanos{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache) / 1000",
               "legendFormat": "{{ cache }}",
               "refId": "A"
             }
@@ -492,7 +492,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "max(infinispan_statistics_average_remove_time_nanos{namespace=\"rhdg-poc\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache) / 1000",
+              "expr": "max(infinispan_statistics_average_remove_time_nanos{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache) / 1000",
               "legendFormat": "{{ cache }}",
               "refId": "A"
             }
@@ -518,7 +518,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "infinispan_rpc_manager_average_replication_time{namespace=\"rhdg-poc\", job=~\"${cluster}\"}",
+              "expr": "infinispan_rpc_manager_average_replication_time{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}",
               "legendFormat": "{{ pod }}",
               "refId": "A"
             }
@@ -544,7 +544,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "sum(rate(infinispan_rpc_manager_replication_failures{namespace=\"rhdg-poc\", job=~\"${cluster}\"}[5m])) by (pod) * 60",
+              "expr": "sum(rate(infinispan_rpc_manager_replication_failures{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}[5m])) by (pod) * 60",
               "legendFormat": "{{ pod }}",
               "refId": "A"
             }
@@ -574,7 +574,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "max(infinispan_statistics_approximate_entries_unique{namespace=\"rhdg-poc\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache)",
+              "expr": "max(infinispan_statistics_approximate_entries_unique{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache)",
               "legendFormat": "{{ cache }}",
               "refId": "A"
             }
@@ -598,7 +598,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "max(infinispan_statistics_approximate_entries_unique{namespace=\"rhdg-poc\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache)",
+              "expr": "max(infinispan_statistics_approximate_entries_unique{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache)",
               "legendFormat": "{{ cache }}",
               "refId": "A"
             }
@@ -620,7 +620,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "sum(infinispan_statistics_data_memory_used{namespace=\"rhdg-poc\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache)",
+              "expr": "sum(infinispan_statistics_data_memory_used{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}) by (cache)",
               "legendFormat": "{{ cache }}",
               "refId": "A"
             }
@@ -642,7 +642,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "sum(rate(infinispan_statistics_evictions{namespace=\"rhdg-poc\", job=~\"${cluster}\", cache=~\"${cache}\"}[5m])) by (cache) * 60",
+              "expr": "sum(rate(infinispan_statistics_evictions{namespace=\"rhdg-poc-test\", job=~\"${cluster}\", cache=~\"${cache}\"}[5m])) by (cache) * 60",
               "legendFormat": "{{ cache }}",
               "refId": "A"
             }
@@ -672,7 +672,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "infinispan_server_single_port_11222_transport_number_of_local_connections{namespace=\"rhdg-poc\", job=~\"${cluster}\"}",
+              "expr": "infinispan_server_single_port_11222_transport_number_of_local_connections{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}",
               "legendFormat": "{{ pod }}",
               "refId": "A"
             }
@@ -694,7 +694,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "rate(infinispan_server_single_port_11222_transport_total_bytes_read{namespace=\"rhdg-poc\", job=~\"${cluster}\"}[5m])",
+              "expr": "rate(infinispan_server_single_port_11222_transport_total_bytes_read{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}[5m])",
               "legendFormat": "{{ pod }}",
               "refId": "A"
             }
@@ -716,7 +716,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "rate(infinispan_server_single_port_11222_transport_total_bytes_written{namespace=\"rhdg-poc\", job=~\"${cluster}\"}[5m])",
+              "expr": "rate(infinispan_server_single_port_11222_transport_total_bytes_written{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}[5m])",
               "legendFormat": "{{ pod }}",
               "refId": "A"
             }
@@ -746,7 +746,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "infinispan_lock_manager_number_of_locks_held{namespace=\"rhdg-poc\", job=~\"${cluster}\"}",
+              "expr": "infinispan_lock_manager_number_of_locks_held{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}",
               "legendFormat": "{{ pod }}",
               "refId": "A"
             }
@@ -768,7 +768,7 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "sum(rate(infinispan_cache_store_writes_to_the_stores{namespace=\"rhdg-poc\", job=~\"${cluster}\"}[5m])) by (cache) * 60",
+              "expr": "sum(rate(infinispan_cache_store_writes_to_the_stores{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}[5m])) by (cache) * 60",
               "legendFormat": "{{ cache }}",
               "refId": "A"
             }
@@ -790,12 +790,12 @@ spec:
           "datasource": { "type": "prometheus", "uid": "477413ac-cce7-4398-9117-df73ed68a29e" },
           "targets": [
             {
-              "expr": "sum(rate(infinispan_cache_loader_cache_loader_loads{namespace=\"rhdg-poc\", job=~\"${cluster}\"}[5m])) by (cache) * 60",
+              "expr": "sum(rate(infinispan_cache_loader_cache_loader_loads{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}[5m])) by (cache) * 60",
               "legendFormat": "loads: {{ cache }}",
               "refId": "A"
             },
             {
-              "expr": "sum(rate(infinispan_cache_loader_cache_loader_misses{namespace=\"rhdg-poc\", job=~\"${cluster}\"}[5m])) by (cache) * 60",
+              "expr": "sum(rate(infinispan_cache_loader_cache_loader_misses{namespace=\"rhdg-poc-test\", job=~\"${cluster}\"}[5m])) by (cache) * 60",
               "legendFormat": "misses: {{ cache }}",
               "refId": "B"
             }

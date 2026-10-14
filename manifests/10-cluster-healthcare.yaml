@@ -2,7 +2,7 @@ apiVersion: infinispan.org/v1
 kind: Infinispan
 metadata:
   name: healthcare
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
   annotations:
     infinispan.org/monitoring: "true"
 spec:

@@ -2,7 +2,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: spring-cache-app
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
   labels:
     app: spring-cache-app
 spec:

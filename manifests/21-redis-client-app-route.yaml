@@ -2,7 +2,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: redis-client-app
-  namespace: rhdg-poc
+  namespace: rhdg-poc-test
   labels:
     app: redis-client-app
 spec:
