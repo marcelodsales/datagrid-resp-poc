@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: spring-cache-app
-          image: spring-cache-app:latest
+          image: image-registry.openshift-image-registry.svc:5000/rhdg-poc-test/spring-cache-app:latest
           ports:
             - containerPort: 8080
               name: http

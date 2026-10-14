@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: spring-session-app
-          image: spring-session-app:latest
+          image: image-registry.openshift-image-registry.svc:5000/rhdg-poc-test/spring-session-app:latest
           ports:
             - containerPort: 8080
               name: http
