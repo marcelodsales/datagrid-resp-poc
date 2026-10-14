@@ -15,6 +15,7 @@
 #   ansible-playbook ansible/poc-validate.yaml --tags infra     # Only infrastructure
 #   ansible-playbook ansible/poc-validate.yaml --tags apps      # Only apps
 #   ansible-playbook ansible/poc-validate.yaml --tags tests     # Only tests
+#   ansible-playbook ansible/poc-validate.yaml --tags cleanup   # Only remove namespace
 
 - name: Red Hat Data Grid 8.6 RESP Protocol PoC — Full Validation
   hosts: localhost
@@ -51,11 +52,11 @@
   tasks:
 
     # ══════════════════════════════════════════════════════════════════
-    # PHASE 1: NAMESPACE
+    # CLEANUP: Remove namespace (also runs at start of full execution)
     # ══════════════════════════════════════════════════════════════════
 
-    - name: "Phase 1 — Create namespace {{ target_namespace }}"
-      tags: [infra]
+    - name: "Cleanup — Remove namespace {{ target_namespace }}"
+      tags: [infra, cleanup]
       block:
         - name: Check if namespace exists
           command: "oc get namespace {{ target_namespace }}"
@@ -89,6 +90,23 @@
           changed_when: false
           when: ns_exists.rc == 0
 
+        - name: "Namespace {{ target_namespace }} removed"
+          debug:
+            msg: "Namespace deleted successfully"
+          when: ns_exists.rc == 0
+
+        - name: "Namespace {{ target_namespace }} does not exist"
+          debug:
+            msg: "Nothing to clean up"
+          when: ns_exists.rc != 0
+
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 1: CREATE NAMESPACE
+    # ══════════════════════════════════════════════════════════════════
+
+    - name: "Phase 1 — Create namespace {{ target_namespace }}"
+      tags: [infra]
+      block:
         - name: Create namespace
           command: "oc new-project {{ target_namespace }}"
           changed_when: true
