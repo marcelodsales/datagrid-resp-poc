@@ -55,7 +55,7 @@ This is the recommended isolation model, **not** a single large shared cluster.
 - Data Grid Operator available in OperatorHub (included with Application Foundations subscription)
 - For test applications: access to the OpenShift internal image registry
 - **cert-manager** already installed in the cluster (for TLS certificate management of the `healthcare` cluster)
-- **Grafana Operator** already installed with a Grafana instance configured to read Prometheus data sources (optional, for monitoring dashboard)
+- **Grafana Operator** (optional) — only required if you want to visualize Data Grid metrics in Grafana dashboards. Without it, metrics are still collected by the OpenShift-native Prometheus and can be queried directly from the OpenShift web console (Observe → Metrics)
 
 ### 2.1 Create the namespace
 
@@ -982,7 +982,13 @@ platform-monitor     ...
 
 Metrics are exposed on port 11223 via a dedicated security realm.
 
-### 11.5 Grafana Dashboard (optional)
+### 11.5 Query metrics from the OpenShift console
+
+Without any additional tooling, you can query Data Grid metrics directly from the OpenShift web console: **Observe → Metrics**. Type any metric name from the table above (e.g., `infinispan_cache_container_health_number_of_nodes`) and click **Run Queries**.
+
+### 11.6 Grafana Dashboard (optional)
+
+Requires the Grafana Operator installed with a Grafana instance configured to read Prometheus data sources.
 
 ```bash
 oc apply -f manifests/28-grafana-dashboard-datagrid.yaml
